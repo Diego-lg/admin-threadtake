@@ -29,6 +29,7 @@ export async function POST(
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) throw new Error("JWT_SECRET not set");
       decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       return new NextResponse("Invalid token", { status: 401 });
     }
@@ -123,7 +124,10 @@ export async function POST(
     return NextResponse.json(result);
   } catch (error: unknown) {
     // Handle specific error for already rated
-    if (error.message === "User has already rated this design") {
+    if (
+      error instanceof Error &&
+      error.message === "User has already rated this design"
+    ) {
       return new NextResponse(error.message, { status: 409 }); // 409 Conflict
     }
     // Handle potential Prisma transaction errors or other errors

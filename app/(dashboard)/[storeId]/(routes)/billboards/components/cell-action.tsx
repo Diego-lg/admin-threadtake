@@ -38,6 +38,7 @@ export const CellAction: React.FC<CellActionProps> = ({ data }) => {
       router.refresh();
 
       toast.success("Billboard deleted");
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Make sure you removed all categories using this billboard");
     } finally {

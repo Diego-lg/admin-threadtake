@@ -131,7 +131,8 @@ export async function POST(req: Request) {
         r2Error = `Failed to upload profile picture to R2: ${
           uploadResponse.statusText
         } - ${errorText.substring(0, 100)}`;
-      } catch (_) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (error) {
         r2Error = `Failed to upload profile picture to R2: ${uploadResponse.statusText}`;
       }
       throw new Error(r2Error);

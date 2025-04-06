@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google"; // Replace Geist fonts with Inter
 import "./globals.css";
 
 import { Providers } from "@/providers/providers"; // Import the new wrapper
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter", // Use a standard variable name
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// Remove Geist Mono definition
 
 export const metadata: Metadata = {
   title: "Admin Dashboard",
@@ -27,7 +24,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       {/* Add suppressHydrationWarning for ThemeProvider */}
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} antialiased`} // Apply only Inter variable
       >
         <Providers>
           {/* Use the wrapper component */}

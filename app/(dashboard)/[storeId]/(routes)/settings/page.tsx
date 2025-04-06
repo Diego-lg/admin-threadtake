@@ -1,7 +1,7 @@
 import prismadb from "@/lib/prismadb";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Adjust path if needed
+import { authOptions } from "@/lib/auth"; // Import from the correct location
 import { SettingsForm } from "./components/settings-form";
 
 interface SettingsPageProps {

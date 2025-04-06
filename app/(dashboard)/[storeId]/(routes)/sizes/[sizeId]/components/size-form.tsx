@@ -67,6 +67,7 @@ export const SizeForm: React.FC<SizeFormProps> = ({ initialData }) => {
       router.refresh();
       router.push(`/${params.storeId}/sizes`);
       toast.success(toastMessage);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Something went wrong");
     } finally {
@@ -82,6 +83,7 @@ export const SizeForm: React.FC<SizeFormProps> = ({ initialData }) => {
       router.refresh();
       router.push(`/${params.storeId}/sizes`);
       toast.success("Size deleted");
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Make sure you removed all categories using this size");
     } finally {

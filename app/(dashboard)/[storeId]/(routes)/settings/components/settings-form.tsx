@@ -57,6 +57,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ initialData }) => {
 
       router.refresh();
       toast.success("Store updated.");
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Something went wrong");
     } finally {
@@ -71,6 +72,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ initialData }) => {
       router.refresh();
       router.push("/");
       toast.success("Store deleted");
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Make sure you removed all products and categories first");
     } finally {

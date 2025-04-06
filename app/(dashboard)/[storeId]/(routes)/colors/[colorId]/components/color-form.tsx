@@ -70,6 +70,7 @@ export const ColorForm: React.FC<ColorFormProps> = ({ initialData }) => {
       router.refresh();
       router.push(`/${params.storeId}/colors`);
       toast.success(toastMessage);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Something went wrong");
     } finally {
@@ -85,6 +86,7 @@ export const ColorForm: React.FC<ColorFormProps> = ({ initialData }) => {
       router.refresh();
       router.push(`/${params.storeId}/colors`);
       toast.success("Color deleted");
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error(
         "Make sure you removed all categories using this color first"

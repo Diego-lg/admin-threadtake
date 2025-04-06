@@ -199,7 +199,8 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                             r2Error = `Failed to upload to R2: ${
                               uploadResponse.statusText
                             } - ${errorText.substring(0, 100)}`; // Limit error length
-                          } catch (_) {
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                          } catch (error) {
                             r2Error = `Failed to upload to R2: ${uploadResponse.statusText}`;
                           }
                           throw new Error(r2Error);

@@ -39,7 +39,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.474.0",
     "mongodb": "^6.13.1",
-    "next": "^15.2.0",
+    "next": "^14.2.5",
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.4",
     "pg": "^8.13.1",
@@ -58,8 +58,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.1.6",
@@ -67,5 +67,9 @@
     "prisma": "^6.3.1",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18"
   }
 }

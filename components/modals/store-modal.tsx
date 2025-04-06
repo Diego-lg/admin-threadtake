@@ -45,6 +45,7 @@ export const StoreModal = () => {
 
       // window.location.assign(`/${response.data.id}`); // Replace with router push
       router.push(`/${response.data.id}`);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Something went wrong");
     } finally {

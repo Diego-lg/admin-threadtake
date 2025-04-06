@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,17 +23,21 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
-    "next-env.d.ts",
-    "next.d.ts",
     "**/*.ts",
+    // "next.d.ts", // Typically included via next-env.d.ts, can often be removed
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/types/app/(dashboard)/[storeId]/(routes)/page.tsx",
-    ".next/types/app/(dashboard)/[storeId]/(routes)/billboards/page.tsx"
+    "next-env.d.ts"
+    // Do not include .next/types/* here - Next.js handles this via its plugin
+    ,
+    ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

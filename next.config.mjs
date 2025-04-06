@@ -1,6 +1,6 @@
-import type { NextConfig } from "next";
+// Removed TypeScript type import and annotation
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   async headers() {
     return [
       {

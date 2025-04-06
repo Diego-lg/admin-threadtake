@@ -1,13 +1,20 @@
-import { NextResponse } from "next/server";
-import prismadb from "@/lib/prismadb";
+import { NextRequest, NextResponse } from "next/server"; // Import NextRequest
+import prismadb from "@/lib/prismadb"; // Restore prismadb import
 
 // GET /api/creators/[creatorId] - Fetch public profile data for a specific creator
+
+interface RouteParams {
+  params: {
+    creatorId: string;
+  };
+}
+
 export async function GET(
-  // req: Request, // Removed as potentially unused and to simplify type inference
-  { params }: { params: { creatorId: string } }
+  req: NextRequest, // Use NextRequest instead of Request
+  context: RouteParams // Keep the explicit interface
 ) {
   try {
-    const { creatorId } = params;
+    const { creatorId } = context.params; // Access params via context
 
     if (!creatorId) {
       return new NextResponse("Creator ID is required", { status: 400 });
