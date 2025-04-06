@@ -1,6 +1,7 @@
 import prismadb from "@/lib/prismadb";
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(
   req: Request,
@@ -30,7 +31,8 @@ export async function PATCH(
 ) {
   try {
     const { billboardId, storeId } = await params;
-    const { userId } = await auth();
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
     const body = await req.json();
     const { label, imageUrl } = body;
 
@@ -77,7 +79,8 @@ export async function DELETE(
   { params }: { params: Promise<{ storeId: string; billboardId: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
     const { billboardId, storeId } = await params;
 
     if (!userId) {

@@ -1,6 +1,7 @@
 import prismadb from "@/lib/prismadb";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Adjust path if needed
 
 import Navbar from "@/components/navBar";
 
@@ -11,29 +12,35 @@ export default async function DashboardLayout({
   children: React.ReactNode;
   params: { storeId: string };
 }) {
-  const { userId } = await auth();
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
 
   if (!userId) {
-    redirect("/sign-in");
+    redirect("/login"); // Redirect to NextAuth login page
   }
 
-  // Ensure params is awaited
-  const { storeId } = await params;
-
+  // Fetch the specific store for validation
   const store = await prismadb.store.findFirst({
     where: {
-      id: storeId,
+      id: params.storeId, // Use params.storeId directly
       userId,
     },
   });
 
   if (!store) {
-    redirect("/");
+    redirect("/"); // Redirect if the specific store isn't found or doesn't belong to the user
   }
+
+  // Fetch all stores for the user to pass to the Navbar/StoreSwitcher
+  const stores = await prismadb.store.findMany({
+    where: {
+      userId,
+    },
+  });
 
   return (
     <>
-      <Navbar />
+      <Navbar stores={stores} /> {/* Pass stores to Navbar */}
       {children}
     </>
   );

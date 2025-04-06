@@ -1,15 +1,18 @@
 import prismadb from "@/lib/prismadb";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Adjust path if needed
 
 export default async function SetupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userId } = await auth();
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id; // Get userId from NextAuth session
+
   if (!userId) {
-    redirect("/sign-in");
+    redirect("/login"); // Redirect to NextAuth login page
   }
   const store = await prismadb.store.findFirst({
     where: { userId },

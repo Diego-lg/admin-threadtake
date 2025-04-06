@@ -1,6 +1,7 @@
 import prismadb from "@/lib/prismadb";
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Adjust path if needed
 import { SettingsForm } from "./components/settings-form";
 
 interface SettingsPageProps {
@@ -10,9 +11,10 @@ interface SettingsPageProps {
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = async ({ params }) => {
-  const { userId } = await auth();
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id;
   if (!userId) {
-    redirect("/sign-in");
+    redirect("/login"); // Redirect to NextAuth login page
   }
   const { storeId } = await params;
 

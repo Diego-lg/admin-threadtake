@@ -4,29 +4,12 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ImagePlus, Trash, X, Upload } from "lucide-react";
 import Image from "next/image";
-import { CldUploadWidget } from "next-cloudinary";
 
 interface ImageUploadProps {
   disabled?: boolean;
   onChange: (value: string) => void;
   onRemove: (value: string) => void;
   value: string[];
-}
-
-interface CloudinaryUploadWidgetInfo {
-  secure_url: string;
-}
-
-interface CloudinaryResult {
-  info?: CloudinaryUploadWidgetInfo | string;
-}
-
-interface CloudinaryImageResource {
-  secure_url: string;
-}
-
-interface CloudinaryResponse {
-  resources: CloudinaryImageResource[];
 }
 
 const ImageUpload: React.FC<ImageUploadProps> = ({
@@ -39,55 +22,42 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [showImageSelector, setShowImageSelector] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // For fetching existing images
+  const [isUploading, setIsUploading] = useState(false); // For upload process
 
   useEffect(() => {
     setIsMounted(true);
-    fetchCloudinaryImages();
+    // TODO: Fetch existing images if needed (e.g., from Cloudflare)
+    fetchExistingImages(); // Call the new fetch function
   }, []);
 
-  const fetchCloudinaryImages = async () => {
+  // TODO: Implement function to fetch images from Cloudflare if needed
+  const fetchExistingImages = async () => {
     setIsLoading(true);
-    try {
-      const response = await fetch(`/api/cloudinary-images`);
-      const data = (await response.json()) as CloudinaryResponse;
-      setExistingImages(data.resources.map((img) => img.secure_url));
-    } catch (error) {
-      console.error("Error fetching Cloudinary images:", error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Placeholder: Replace with actual Cloudflare fetching logic
+    console.log("Fetching existing images...");
+    // Simulating fetch delay and setting empty array for now
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setExistingImages([]); // Replace with actual fetched images
+    setIsLoading(false);
   };
 
-  const deleteCloudinaryImage = async (url: string) => {
+  // TODO: Implement function to delete image from Cloudflare
+  const deleteImage = async (url: string) => {
     try {
       setIsDeleting(url);
+      console.log("Deleting image:", url);
+      // Placeholder: Replace with actual Cloudflare deletion logic & API call
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate API call
 
-      // Extract the public_id from the URL
-      const urlParts = url.split("/");
-      const filename = urlParts[urlParts.length - 1];
-      const publicId = filename.split(".")[0];
+      // Remove from existingImages state
+      setExistingImages((prev) => prev.filter((img) => img !== url));
 
-      // Call API to delete the image
-      const response = await fetch("/api/cloudinary-images", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ publicId }),
-      });
-
-      if (response.ok) {
-        // Remove from existingImages state
-        setExistingImages((prev) => prev.filter((img) => img !== url));
-
-        // If this image was also in the selected values, remove it there too
-        if (value.includes(url)) {
-          onRemove(url);
-        }
-      } else {
-        console.error("Failed to delete image from Cloudinary");
+      // If this image was also in the selected values, remove it there too
+      if (value.includes(url)) {
+        onRemove(url);
       }
+      console.log("Image deleted successfully (simulated)");
     } catch (error) {
       console.error("Error deleting image:", error);
     } finally {
@@ -95,26 +65,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     }
   };
 
-  const onSuccess = (result: CloudinaryResult) => {
-    if (
-      result.info &&
-      typeof result.info === "object" &&
-      "secure_url" in result.info
-    ) {
-      const imageUrl = result.info.secure_url;
-      onChange(imageUrl);
-
-      // Add the new image to the existingImages list
-      setExistingImages((prev) => [...prev, imageUrl]);
-    } else if (result.info && typeof result.info === "string") {
-      const imageUrl = result.info;
-      onChange(imageUrl);
-
-      // Add the new image to the existingImages list
-      setExistingImages((prev) => [...prev, imageUrl]);
-    } else {
-      console.error("Unexpected Cloudinary result info:", result.info);
-    }
+  // TODO: Implement handler for successful Cloudflare upload
+  const onUploadSuccess = (uploadedUrl: string) => {
+    onChange(uploadedUrl);
+    // Add the new image to the existingImages list if managing them here
+    setExistingImages((prev) => [...prev, uploadedUrl]);
+    console.log("Upload successful:", uploadedUrl);
   };
 
   const openImageBrowser = () => {
@@ -183,30 +139,111 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
               {/* Upload Button in Modal */}
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex-1">
-                  <CldUploadWidget
-                    onSuccess={onSuccess}
-                    uploadPreset="nwkydo0u"
-                    options={{
-                      folder: "next-cloudinary",
+                  {/* TODO: Replace with Cloudflare Upload Component/Logic */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={disabled}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      setIsUploading(true);
+                      console.log("File selected:", file.name, file.type);
+
+                      try {
+                        // 1. Get the signed URL from our API
+                        const signedUrlResponse = await fetch(
+                          "/api/upload-url",
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                              filename: file.name,
+                              contentType: file.type,
+                            }),
+                          }
+                        );
+
+                        if (!signedUrlResponse.ok) {
+                          throw new Error(
+                            `Failed to get signed URL: ${signedUrlResponse.statusText}`
+                          );
+                        }
+
+                        const { uploadUrl, publicUrl } =
+                          await signedUrlResponse.json();
+                        console.log("Got signed URL:", uploadUrl);
+                        console.log("Public URL:", publicUrl);
+
+                        // 2. Upload the file directly to R2 using the signed URL
+                        const uploadResponse = await fetch(uploadUrl, {
+                          method: "PUT",
+                          body: file,
+                          headers: {
+                            "Content-Type": file.type,
+                          },
+                        });
+
+                        if (!uploadResponse.ok) {
+                          // Attempt to read error from R2 response if possible
+                          let r2Error = "Upload failed";
+                          try {
+                            const errorText = await uploadResponse.text();
+                            console.error(
+                              "R2 Upload Error Response:",
+                              errorText
+                            );
+                            r2Error = `Failed to upload to R2: ${
+                              uploadResponse.statusText
+                            } - ${errorText.substring(0, 100)}`; // Limit error length
+                          } catch (_) {
+                            r2Error = `Failed to upload to R2: ${uploadResponse.statusText}`;
+                          }
+                          throw new Error(r2Error);
+                        }
+
+                        console.log("File uploaded successfully to R2.");
+
+                        // 3. Call the success handler with the public URL
+                        onUploadSuccess(publicUrl);
+                      } catch (error) {
+                        console.error("Upload failed:", error);
+                        // TODO: Show error toast to user
+                      } finally {
+                        setIsUploading(false);
+                        // Reset file input value so the same file can be selected again if needed
+                        e.target.value = "";
+                      }
                     }}
+                    className="hidden" // Basic styling, replace as needed
+                    id="cloudflare-upload-input"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById("cloudflare-upload-input")
+                        ?.click()
+                    }
+                    disabled={disabled || isUploading} // Disable while uploading
+                    variant="secondary"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
                   >
-                    {({ open }) => (
-                      <Button
-                        type="button"
-                        onClick={() => open()}
-                        disabled={disabled}
-                        variant="secondary"
-                        className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload new image
-                      </Button>
+                    {isUploading ? (
+                      <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
                     )}
-                  </CldUploadWidget>
+                    {isUploading ? "Uploading..." : "Upload new image"}
+                  </Button>
                 </div>
                 <div className="flex items-center">
+                  {/* Refresh button might need different logic for Cloudflare */}
                   <Button
-                    onClick={fetchCloudinaryImages}
+                    onClick={fetchExistingImages} // Use the new fetch function
                     variant="outline"
                     size="sm"
                     className="ml-2 border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white"
@@ -220,6 +257,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                       {isLoading ? (
                         <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent" />
                       ) : (
+                        // Using a simple refresh icon for now
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="16"
@@ -231,10 +269,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <path d="M21 2v6h-6"></path>
-                          <path d="M3 12a9 9 0 0 1 15-6.7l3 2.7"></path>
-                          <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path>
-                          <path d="M21 22v-6h-6"></path>
+                          <path d="M21 2v6h-6" />
+                          <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                          <path d="M3 22v-6h6" />
+                          <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
                         </svg>
                       )}
                     </div>
@@ -254,7 +292,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                       <div className="relative w-full h-full">
                         <Image
                           src={url}
-                          alt="Cloudinary Image"
+                          alt="Uploaded Image"
                           fill
                           sizes="(max-width: 768px) 100vw, 33vw"
                           className="object-cover cursor-pointer transition-all duration-300"
@@ -278,7 +316,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteCloudinaryImage(url);
+                            deleteImage(url); // Use the new delete function
                           }}
                           disabled={isDeleting === url}
                           className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full transition-colors"
@@ -295,9 +333,11 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                   ))
                 ) : (
                   <div className="col-span-full flex items-center justify-center py-12 text-zinc-400">
-                    {isLoading
-                      ? "Loading images..."
-                      : "No images available in your Cloudinary account"}
+                    {
+                      isLoading
+                        ? "Loading images..."
+                        : "No existing images found." /* Updated message */
+                    }
                   </div>
                 )}
               </div>

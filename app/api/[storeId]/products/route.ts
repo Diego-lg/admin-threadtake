@@ -1,6 +1,7 @@
 import prismadb from "@/lib/prismadb";
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth"; // Updated import path
 
 export async function POST(
   req: Request,
@@ -8,7 +9,8 @@ export async function POST(
 ) {
   try {
     const { storeId } = await params;
-    const { userId } = await auth();
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
     const body = await req.json();
 
     const {
@@ -97,43 +99,123 @@ export async function GET(
   { params }: { params: Promise<{ storeId: string }> }
 ) {
   try {
-    const { storeId } = await params;
+    const { storeId } = await params; // Note: storeId might not be relevant for community designs
     const { searchParams } = new URL(req.url);
     const categoryId = searchParams.get("categoryId") || undefined;
-    const colorId = searchParams.get("colorId") || undefined;
-    const sizeId = searchParams.get("sizeId") || undefined;
-    const isFeatured = searchParams.get("isFeatured");
+    const colorId = searchParams.get("colorId") || undefined; // Filters might not apply to shared designs
+    const sizeId = searchParams.get("sizeId") || undefined; // Filters might not apply to shared designs
+    const isFeatured = searchParams.get("isFeatured"); // Filters might not apply to shared designs
 
-    if (!storeId) {
-      return new NextResponse("Store ID is required", { status: 400 });
+    const COMMUNITY_CATEGORY_ID = "f53abb5e-7c99-4e07-a0f3-359720c0c175";
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let results: any[] = []; // Use 'any' for now, refine type later if needed
+
+    if (categoryId === COMMUNITY_CATEGORY_ID) {
+      // Fetch shared designs
+      // Fetch shared designs
+      const sharedDesigns = await prismadb.savedDesign.findMany({
+        where: {
+          isShared: true,
+          // Potentially add filters based on colorId/sizeId if applicable to shared designs?
+          // colorId: colorId,
+          // sizeId: sizeId,
+        },
+        include: {
+          user: {
+            // Include user to potentially show creator info
+            select: { name: true, id: true },
+          },
+          product: {
+            // Include related product for name/price
+            select: { name: true, price: true },
+          },
+          color: true, // Include related color
+          size: true, // Include related size
+        },
+        orderBy: {
+          updatedAt: "desc", // Order by last updated might be more relevant
+        },
+      });
+
+      // Map SavedDesign to a structure similar to Product
+      results = sharedDesigns.map((design) => ({
+        id: design.id, // Use SavedDesign ID
+        name: design.product?.name || "Community Design", // Use related product name or default
+        // Use related product price, convert Decimal to number, default to 0
+        price: design.product?.price
+          ? parseFloat(design.product.price.toString())
+          : 0,
+        isFeatured: false, // Shared designs likely aren't "featured" in store context
+        isArchived: false,
+        // Use designImageUrl for the image preview
+        images: design.designImageUrl
+          ? [
+              {
+                id: design.id + "_img",
+                url: design.designImageUrl,
+                productId: design.id,
+              },
+            ]
+          : [],
+        // Set category explicitly to Community
+        category: {
+          id: COMMUNITY_CATEGORY_ID,
+          name: "Community",
+          storeId: null,
+          billboardId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }, // Provide necessary fields for Category type
+        // Use related size and color data
+        size: design.size,
+        color: design.color,
+        storeId: null, // Not associated with a specific store
+        createdAt: design.createdAt,
+        updatedAt: design.updatedAt,
+        // Add creator info
+        creatorName: design.user?.name || "Anonymous",
+        creatorId: design.user?.id,
+        // Add any other fields required by the frontend's Product type, potentially with null/default values
+        categoryId: COMMUNITY_CATEGORY_ID, // Explicitly set categoryId
+        sizeId: design.sizeId,
+        colorId: design.colorId,
+      }));
+    } else {
+      // Fetch regular products if not Community category
+      if (!storeId) {
+        // Store ID is required for non-community categories
+        return new NextResponse("Store ID is required for this category", {
+          status: 400,
+        });
+      }
+      const products = await prismadb.product.findMany({
+        where: {
+          storeId: storeId,
+          categoryId, // Filter by the provided categoryId
+          colorId,
+          sizeId,
+          isFeatured: isFeatured ? true : undefined,
+          isArchived: false,
+        },
+        include: {
+          images: true,
+          category: true,
+          size: true,
+          color: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      results = products.map((product) => ({
+        ...product,
+        price: parseFloat(product.price.toString()),
+      }));
     }
 
-    const products = await prismadb.product.findMany({
-      where: {
-        storeId: storeId,
-        categoryId,
-        colorId,
-        sizeId,
-        isFeatured: isFeatured ? true : undefined,
-        isArchived: false,
-      },
-      include: {
-        images: true,
-        category: true,
-        size: true,
-        color: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    const productsWithPriceNumber = products.map((product) => ({
-      ...product,
-      price: parseFloat(product.price.toString()),
-    }));
-
-    return NextResponse.json(productsWithPriceNumber);
+    return NextResponse.json(results);
   } catch (error) {
     console.log("[PRODUCTS_GET]", error);
     return new NextResponse("Internal error", { status: 500 });

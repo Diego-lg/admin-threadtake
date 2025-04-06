@@ -2,11 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-import { ClerkProvider } from "@clerk/nextjs"; // Revert to original import
-import { ModalProvider } from "@/providers/modal-provider";
-import { ToasterProvider } from "@/providers/toast-provider";
-import { ThemeProvider } from "@/providers/theme-provider";
-
+import { Providers } from "@/providers/providers"; // Import the new wrapper
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -28,18 +24,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
-          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-            <ToasterProvider />
-            <ModalProvider />
-            {children}
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" suppressHydrationWarning>
+      {/* Add suppressHydrationWarning for ThemeProvider */}
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <Providers>
+          {/* Use the wrapper component */}
+          {children}
+        </Providers>
+      </body>
+    </html>
   );
 }
