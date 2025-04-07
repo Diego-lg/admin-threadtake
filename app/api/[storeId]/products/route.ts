@@ -196,6 +196,7 @@ export async function GET(
           colorId,
           sizeId,
           isFeatured: isFeatured ? true : undefined,
+          savedDesignId: null, // <-- Add this line to exclude generated products
           isArchived: false,
         },
         include: {
