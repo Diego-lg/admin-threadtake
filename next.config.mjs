@@ -1,39 +1,7 @@
 // Removed TypeScript type import and annotation
 
 const nextConfig = {
-  // Determine the allowed origin based on the environment
-  // Use VERCEL_URL in production, fallback to localhost:3001 for development
-  // Ensure VERCEL_URL is set in your Vercel project environment variables if not automatically provided
-  allowedOrigin:
-    process.env.NODE_ENV === "production"
-      ? process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "*" // Use VERCEL_URL or wildcard as fallback
-      : "http://localhost:3001",
-  async headers() {
-    return [
-      {
-        // matching all API routes
-        source: "/api/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          {
-            key: "Access-Control-Allow-Origin",
-            value: this.allowedOrigin, // Use the dynamic origin
-          },
-          {
-            key: "Access-Control-Allow-Methods",
-            value: "GET,DELETE,PATCH,POST,PUT,OPTIONS",
-          },
-          {
-            key: "Access-Control-Allow-Headers",
-            value:
-              "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
-          },
-        ],
-      },
-    ];
-  },
+  // CORS headers will be handled in middleware.ts
   images: {
     remotePatterns: [
       {
