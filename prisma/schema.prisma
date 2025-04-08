@@ -18,6 +18,13 @@ enum UserRole {
   USER
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  // Optional: Add DELETED for soft deletes
+  // DELETED
+}
+
 model Store {
   id         String      @id @default(uuid())
   name       String
@@ -28,6 +35,7 @@ model Store {
   colors     Color[]     @relation("StoreToColor")
   products   Product[]   @relation("StoreToProduct")
   orders     Order[]     @relation("@StoreToOrder")
+  salesGoals SalesGoal[] // Add relation to SalesGoal model
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 }
@@ -196,6 +204,7 @@ model User {
   image          String?
   hashedPassword String? // Added for Credentials provider
   role           UserRole      @default(USER) // Add role field
+  status         UserStatus    @default(ACTIVE) // Add status field
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   // User Preferences
@@ -285,4 +294,34 @@ model SavedDesign {
   @@index([userId, isShared]) // Index for user's shared designs
   @@index([tags]) // Index for searching by tags
   @@index([averageRating]) // Index for sorting/filtering by rating
+}
+
+// --- Enums for SalesGoal ---
+enum MetricType {
+  REVENUE
+  UNITS_SOLD
+}
+
+enum TimePeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// --- Model for Sales Goals ---
+model SalesGoal {
+  id           String     @id @default(uuid())
+  storeId      String
+  store        Store      @relation(fields: [storeId], references: [id], onDelete: Cascade) // Relation to Store
+  metricType   MetricType // e.g., REVENUE or UNITS_SOLD
+  targetValue  Float      // The numeric goal value
+  timePeriod   TimePeriod // e.g., DAILY, WEEKLY, MONTHLY
+  // Optional: Add specific start/end dates if needed, otherwise calculate based on timePeriod and createdAt/updatedAt
+  // startDate    DateTime?
+  // endDate      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([storeId])
+  @@index([storeId, timePeriod]) // Index for fetching goals by store and period
 }

@@ -3,14 +3,8 @@ import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import prismadb from "@/lib/prismadb";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return NextResponse.json({}); // Let middleware handle CORS
 }
 
 export async function POST(
@@ -79,7 +73,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ url: session.url }, { headers: corsHeaders });
+    return NextResponse.json({ url: session.url }); // Let middleware handle CORS
   } catch (error) {
     console.error("Error creating checkout session:", error);
     return new NextResponse("Internal Server Error", { status: 500 });

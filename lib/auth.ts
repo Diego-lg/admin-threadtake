@@ -41,7 +41,13 @@ export const authOptions: AuthOptions = {
           throw new Error("Invalid credentials");
         }
 
-        // Return user object if credentials are valid
+        // Add check for user status
+        if (user.status !== "ACTIVE") {
+          // Assuming UserStatus enum values are strings like 'ACTIVE'
+          throw new Error("Account is inactive");
+        }
+
+        // Return user object if credentials are valid and account is active
         return user;
       },
     }),

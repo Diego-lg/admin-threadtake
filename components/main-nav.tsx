@@ -35,14 +35,29 @@ export function MainNav({ className }: React.HTMLAttributes<HTMLElement>) {
       active: pathname === `/${params.storeId}/products`,
     },
     {
+      href: `/${params.storeId}/marketplace-products`, // Add new route
+      label: "Marketplace", // Label for the new section
+      active: pathname === `/${params.storeId}/marketplace-products`, // Active state check
+    },
+    {
       href: `/${params.storeId}/orders`,
       label: "Orders",
       active: pathname === `/${params.storeId}/orders`,
     },
     {
+      href: `/${params.storeId}/goals`, // Add new route for Goals
+      label: "Goals", // Label for the new section
+      active: pathname === `/${params.storeId}/goals`, // Active state check
+    },
+    {
       href: `/${params.storeId}/sizes`,
       label: "Sizes",
       active: pathname === `/${params.storeId}/sizes`,
+    },
+    {
+      href: `/${params.storeId}/admin/users`, // Link to the new users admin page
+      label: "Users",
+      active: pathname === `/${params.storeId}/admin/users`, // Active state check
     },
     {
       href: `/${params.storeId}/settings`,
