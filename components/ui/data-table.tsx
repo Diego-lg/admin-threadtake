@@ -11,6 +11,8 @@ import {
   getPaginationRowModel,
   ColumnFiltersState,
   getFilteredRowModel,
+  RowSelectionState,
+  OnChangeFn,
 } from "@tanstack/react-table";
 
 import {
@@ -27,12 +29,16 @@ interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchKey: string;
+  rowSelection: RowSelectionState;
+  onRowSelectionChange: OnChangeFn<RowSelectionState>;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
   searchKey,
+  rowSelection,
+  onRowSelectionChange,
 }: DataTableProps<TData, TValue>) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
@@ -43,8 +49,11 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     onColumnFiltersChange: setColumnFilters,
     getFilteredRowModel: getFilteredRowModel(),
+    enableRowSelection: true, // Enable row selection
+    onRowSelectionChange: onRowSelectionChange, // Pass the handler
     state: {
       columnFilters,
+      rowSelection, // Pass the state
     },
   });
 

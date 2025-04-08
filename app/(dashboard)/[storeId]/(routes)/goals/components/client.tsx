@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import { Plus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation"; // Use next/navigation
+import { RowSelectionState } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -18,6 +21,7 @@ interface GoalsClientProps {
 export const GoalsClient: React.FC<GoalsClientProps> = ({ data }) => {
   const params = useParams();
   const router = useRouter();
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   return (
     <>
@@ -33,7 +37,13 @@ export const GoalsClient: React.FC<GoalsClientProps> = ({ data }) => {
         </Button>
       </div>
       <Separator />
-      <DataTable searchKey="metricType" columns={columns} data={data} />{" "}
+      <DataTable
+        searchKey="metricType"
+        columns={columns}
+        data={data}
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+      />{" "}
       {/* Example search key */}
       {/* Optional: API List */}
       {/* <Heading title="API" description="API Calls for Sales Goals" />

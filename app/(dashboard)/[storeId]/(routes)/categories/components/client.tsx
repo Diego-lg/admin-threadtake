@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
 import { Separator } from "@/components/ui/separator";
 import { Plus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
+import { RowSelectionState } from "@tanstack/react-table";
 import { CategoryColumn, columns } from "./columns";
 import { DataTable } from "@/components/ui/data-table";
 import { ApiList } from "@/components/ui/api-list";
@@ -16,6 +19,7 @@ interface CategoryClientProps {
 export const CategoryClient: React.FC<CategoryClientProps> = ({ data }) => {
   const router = useRouter();
   const params = useParams();
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   return (
     <>
@@ -33,7 +37,13 @@ export const CategoryClient: React.FC<CategoryClientProps> = ({ data }) => {
         </Button>
       </div>
       <Separator />
-      <DataTable searchKey="name" columns={columns} data={data} />
+      <DataTable
+        searchKey="name"
+        columns={columns}
+        data={data}
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+      />
       <Heading title="API" description="API calls for Categories" />
       <Separator />
       <ApiList entityName="categories" entityIdName="categoryId" />

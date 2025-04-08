@@ -185,26 +185,6 @@ export async function GET(
 
         if (goal.metricType === MetricType.REVENUE) {
           // Calculate total revenue from paid orders within the date range
-          const result = await prismadb.order.aggregate({
-            _sum: {
-              // Need to sum OrderItem prices, requires joining or a different approach
-              // For simplicity, let's assume Order has a totalAmount field (needs schema change)
-              // OR sum product prices from OrderItems (less efficient here)
-              // Placeholder: Using a simple count for now, replace with actual sum logic
-              // totalAmount: true, // Assuming Order model has totalAmount: Decimal
-            },
-            where: {
-              storeId: storeId,
-              isPaid: true,
-              createdAt: {
-                gte: startDate,
-                lte: endDate,
-              },
-            },
-          });
-          // Replace with actual sum logic based on your Order/OrderItem structure
-          // currentProgress = parseFloat(result._sum.totalAmount?.toString() ?? "0");
-
           // --- Alternative: Summing OrderItem prices (less efficient in aggregate) ---
           const ordersInPeriod = await prismadb.order.findMany({
             where: {
