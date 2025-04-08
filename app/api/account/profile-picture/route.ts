@@ -11,7 +11,7 @@ const R2_ENDPOINT = process.env.R2_ENDPOINT;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
+const R2_PUBLIC_BUCKET_URL = process.env.R2_PUBLIC_BUCKET_URL; // Corrected variable name
 
 const s3Client = new S3Client({
   region: "auto",
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       !R2_ACCESS_KEY_ID ||
       !R2_SECRET_ACCESS_KEY ||
       !R2_BUCKET_NAME ||
-      !R2_PUBLIC_URL
+      !R2_PUBLIC_BUCKET_URL // Corrected variable name
     ) {
       throw new Error("R2 storage is not configured correctly on the server.");
     }
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
     }
 
     // 3. Construct the public URL
-    const newImageUrl = `${R2_PUBLIC_URL.replace(/\/$/, "")}/${key}`;
+    const newImageUrl = `${R2_PUBLIC_BUCKET_URL.replace(/\/$/, "")}/${key}`; // Corrected variable name
     const newImageKey = key; // The key used for the upload
 
     console.log(
@@ -168,7 +168,12 @@ export async function POST(req: Request) {
     // --- End Delete Old Image ---
     // Note: Deletion logic is commented out until imageKey is added to the User model.
     // You'll also need to extract the key from the oldImageUrl if imageKey isn't available.
-    if (oldImageUrl && R2_PUBLIC_URL && oldImageUrl.startsWith(R2_PUBLIC_URL)) {
+    if (
+      oldImageUrl &&
+      R2_PUBLIC_BUCKET_URL &&
+      oldImageUrl.startsWith(R2_PUBLIC_BUCKET_URL)
+    ) {
+      // Corrected variable name
       console.warn(
         `Old image deletion skipped for ${oldImageUrl}. Implement deletion using R2 key.`
       );
