@@ -1,0 +1,327 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  // Optional: Add DELETED for soft deletes
+  // DELETED
+}
+
+model Store {
+  id         String      @id @default(uuid())
+  name       String
+  userId     String
+  billboards Billboard[] @relation("StoreToBillboard")
+  categories Category[]  @relation("StoreToCategory")
+  sizes      Size[]      @relation("StoreToSize")
+  colors     Color[]     @relation("StoreToColor")
+  products   Product[]   @relation("StoreToProduct")
+  orders     Order[]     @relation("@StoreToOrder")
+  salesGoals SalesGoal[] // Add relation to SalesGoal model
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Billboard {
+  id         String     @id @default(uuid())
+  storeId    String
+  store      Store      @relation("StoreToBillboard", fields: [storeId], references: [id])
+  label      String
+  imageUrl   String
+  categories Category[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([storeId])
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  storeId     String
+  store       Store     @relation("StoreToCategory", fields: [storeId], references: [id])
+  billboardId String
+  billboard   Billboard @relation(fields: [billboardId], references: [id])
+  products    Product[] @relation("CategoryToProduct")
+
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@index([billboardId])
+}
+
+model Size {
+  id          String        @id @default(uuid())
+  storeId     String
+  store       Store         @relation("StoreToSize", fields: [storeId], references: [id])
+  name        String
+  value       String
+  products    Product[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  SavedDesign SavedDesign[]
+
+  @@index([storeId])
+}
+
+model Color {
+  id          String        @id @default(uuid())
+  storeId     String
+  store       Store         @relation("StoreToColor", fields: [storeId], references: [id])
+  name        String
+  value       String
+  products    Product[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  SavedDesign SavedDesign[]
+
+  @@index([storeId])
+}
+
+model Product {
+  id         String      @id @default(uuid())
+  storeId    String
+  store      Store       @relation("StoreToProduct", fields: [storeId], references: [id])
+  categoryId String
+  category   Category    @relation("CategoryToProduct", fields: [categoryId], references: [id])
+  name       String
+  price      Decimal
+  isFeatured Boolean     @default(false)
+  isArchived Boolean     @default(false)
+  sizeId     String
+  size       Size        @relation(fields: [sizeId], references: [id])
+  colorId    String
+  color      Color       @relation(fields: [colorId], references: [id])
+  images     Image[]
+  orderItems OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  SavedDesign SavedDesign[] // Relation to designs using this as a base product
+
+  // Link to the SavedDesign this product represents (if any)
+  savedDesignId String?      @unique
+  savedDesign   SavedDesign? @relation(name: "ProductForDesign", fields: [savedDesignId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  @@index([storeId])
+  @@index([categoryId])
+  @@index([sizeId])
+  @@index([colorId])
+}
+
+model Image {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  storeId    String
+  store      Store       @relation("@StoreToOrder", fields: [storeId], references: [id])
+  userId     String? // Optional: Link to user, allows guest orders if null
+  user       User?       @relation(fields: [userId], references: [id]) // Optional relation
+  orderItems OrderItem[]
+  isPaid     Boolean     @default(false)
+  phone      String      @default("")
+  address    String      @default("")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([storeId])
+  @@index([userId]) // Index for user orders lookup
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id             String        @id @default(cuid())
+  name           String?
+  email          String?       @unique
+  emailVerified  DateTime?
+  image          String?
+  hashedPassword String? // Added for Credentials provider
+  role           UserRole      @default(USER) // Add role field
+  status         UserStatus    @default(ACTIVE) // Add status field
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  // User Preferences
+  darkMode       Boolean?      @default(false) // Default to light mode
+  emailNotifications Boolean?  @default(true)  // Default to receiving emails
+  // --- Creator Profile Fields ---
+  bio                String?   @db.Text // Optional creator biography
+  portfolioUrl       String?            // Optional link to external portfolio
+  profileCardBackground String? // Optional CSS background for profile card (Phase 2)
+  isCreator          Boolean   @default(false) // Flag to identify creators
+
+  accounts       Account[]
+  sessions       Session[]
+  orders         Order[] // Relation to user's orders
+  savedDesigns   SavedDesign[] // Relation to user's saved designs
+  ratings        Rating[]      // Relation to ratings submitted by the user
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Model for Design Ratings/Reviews
+model Rating {
+  id            String      @id @default(uuid())
+  score         Int // e.g., 1-5 stars
+  comment       String?     @db.Text // Optional review text
+  createdAt     DateTime    @default(now())
+
+  userId        String // Who submitted the rating
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  savedDesignId String // Which design was rated
+  savedDesign   SavedDesign @relation(fields: [savedDesignId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, savedDesignId]) // User can only rate a design once
+  @@index([userId])
+  @@index([savedDesignId])
+}
+
+// Model for User Saved Designs
+model SavedDesign {
+  id         String  @id @default(uuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade) // Link to User
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade) // Link to Product
+  colorId    String
+  color      Color   @relation(fields: [colorId], references: [id]) // Link to Color
+  sizeId     String
+  size       Size    @relation(fields: [sizeId], references: [id]) // Link to Size
+  customText String? // Optional custom text field
+  designImageUrl String? // URL for the generated design preview image
+  mockupImageUrl String? // URL for an optional product mockup image
+  uploadedLogoUrl String? // URL for the original uploaded logo (in R2)
+  uploadedPatternUrl String? // URL for the original uploaded pattern (in R2)
+  shirtColorHex      String? // Hex code of the shirt color
+  isLogoMode         Boolean? // True if logo mode, false if pattern mode
+  logoScale          Float? // Scale factor for the logo
+  logoOffsetX        Float? // Horizontal offset for the logo (0-1 range?)
+  logoOffsetY        Float? // Vertical offset for the logo (0-1 range?)
+  logoTargetPart     String? // "front" or "back"
+  description        String?  // Optional description added by creator
+  tags               String[] @default([]) // Tags for filtering/searching
+  viewCount          Int      @default(0) // Track views for popularity sorting
+  isShared           Boolean  @default(false) // Field to track sharing status
+  usageRights        String?            // e.g., "Personal Use Only", "Commercial Use Allowed"
+  // --- Phase 2 Rating Fields ---
+  averageRating      Float    @default(0) // Average score from ratings
+  ratingCount        Int      @default(0) // Number of ratings received
+  ratings            Rating[] // Relation to ratings received
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Link to the Product created specifically for this design when shared (if any)
+  derivedProductId String?      @unique
+  derivedProduct   Product?     @relation(name: "ProductForDesign") // Relation arguments are defined on the Product side
+  @@index([userId])
+  @@index([productId])
+  @@index([colorId])
+  @@index([sizeId])
+  @@index([userId, isShared]) // Index for user's shared designs
+  @@index([tags]) // Index for searching by tags
+  @@index([averageRating]) // Index for sorting/filtering by rating
+}
+
+// --- Enums for SalesGoal ---
+enum MetricType {
+  REVENUE
+  UNITS_SOLD
+}
+
+enum TimePeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// --- Model for Sales Goals ---
+model SalesGoal {
+  id           String     @id @default(uuid())
+  storeId      String
+  store        Store      @relation(fields: [storeId], references: [id], onDelete: Cascade) // Relation to Store
+  metricType   MetricType // e.g., REVENUE or UNITS_SOLD
+  targetValue  Float      // The numeric goal value
+  timePeriod   TimePeriod // e.g., DAILY, WEEKLY, MONTHLY
+  // Optional: Add specific start/end dates if needed, otherwise calculate based on timePeriod and createdAt/updatedAt
+  // startDate    DateTime?
+  // endDate      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([storeId])
+  @@index([storeId, timePeriod]) // Index for fetching goals by store and period
+}
