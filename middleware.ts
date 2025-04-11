@@ -6,7 +6,8 @@ import { UserRole } from "@prisma/client";
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://treadheaven-storefront.vercel.app", // Main storefront production URL
+        "https://www.threadtake.com",
+        "https://storefront-threadtake.vercel.app", // Main storefront production URL
         "https://treadheaven-storefront-q1lukl62u-diegolgs-projects-800e72ea.vercel.app", // Specific storefront preview URL
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null, // This admin app's Vercel URL
       ].filter(Boolean) as string[]) // Filter out null if VERCEL_URL isn't set
