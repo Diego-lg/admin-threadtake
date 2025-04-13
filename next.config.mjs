@@ -1,6 +1,11 @@
 // Removed TypeScript type import and annotation
 
 const nextConfig = {
+  api: {
+    bodyParser: {
+      sizeLimit: "10mb", // Increase the limit for API routes
+    },
+  },
   // CORS headers will be handled in middleware.ts
   images: {
     remotePatterns: [

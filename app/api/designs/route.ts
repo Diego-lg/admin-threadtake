@@ -14,6 +14,7 @@ interface JwtPayload {
 
 // POST /api/designs - Create a new saved design for the logged-in user
 export async function POST(req: Request) {
+  console.log("API: Received POST /api/designs request"); // Informative log
   try {
     // 1. Get Authorization header
     // Access header directly from the request object
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
       where: { id: productId },
     });
     if (!productExists) {
+      console.error(`API Error: Product with ID ${productId} not found.`);
       return new NextResponse(`Product with ID ${productId} not found`, {
         status: 404,
       });
@@ -97,6 +99,7 @@ export async function POST(req: Request) {
       where: { id: colorId },
     });
     if (!colorExists) {
+      console.error(`API Error: Color with ID ${colorId} not found.`);
       return new NextResponse(`Color with ID ${colorId} not found`, {
         status: 404,
       });
@@ -106,6 +109,9 @@ export async function POST(req: Request) {
       where: { id: sizeId },
     });
     if (!sizeExists) {
+      console.error(
+        `API Error: Size with ID ${sizeId} not found. Frontend likely sent value instead of ID.`
+      );
       return new NextResponse(`Size with ID ${sizeId} not found`, {
         status: 404,
       });
