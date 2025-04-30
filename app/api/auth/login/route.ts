@@ -58,12 +58,20 @@ export async function POST(req: Request) {
       // Add any other relevant non-sensitive info needed by the frontend
     };
 
+    const expiresInSeconds = 24 * 60 * 60; // 1 day in seconds
     const token = jwt.sign(tokenPayload, jwtSecret, {
-      expiresIn: "1d", // Example: token expires in 1 day
+      expiresIn: expiresInSeconds,
     });
+    const nowInMs = Date.now();
+    const expiresAtMs = nowInMs + expiresInSeconds * 1000;
 
-    // Return the necessary user data AND the token as JSON
-    return NextResponse.json({ user: userWithoutPassword, token });
+    // Return the response matching the frontend's expected structure
+    return NextResponse.json({
+      user: userWithoutPassword,
+      accessToken: token,
+      refreshToken: token, // Using same token as placeholder for refresh token
+      accessTokenExpiresAt: expiresAtMs,
+    });
   } catch (error) {
     console.error("[AUTH_LOGIN_POST]", error);
     return new NextResponse("Internal Server Error", { status: 500 });

@@ -15,7 +15,6 @@ export async function GET(
 ) {
   try {
     const { creatorId } = context.params; // Access params via context
-
     if (!creatorId) {
       return new NextResponse("Creator ID is required", { status: 400 });
     }

@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/goal-tracker";
 import { SalesTicker } from "@/components/ui/sales-ticker";
 import { ProductPerformanceChart } from "@/components/product-performance-chart";
-import { SalesMapChart } from "@/components/sales-map-chart";
 import { CustomerSegmentationChart } from "@/components/customer-segmentation-chart"; // Import segmentation chart
 import prismadb from "@/lib/prismadb"; // Import prismadb for direct access
 // import { getServerSession } from "next-auth"; // Not strictly needed if page is protected by middleware
@@ -193,7 +192,8 @@ const DashboardPage: React.FC<DashboardPageProps> = async ({ params }) => {
           </CardContent>
         </Card>
         {/* Add Sales Map Chart */}
-        <SalesMapChart />
+        {/* <SalesMapChart /> */}{" "}
+        {/* Removed as component was deleted from backend project */}
         {/* Add Customer Segmentation Chart */}
         <CustomerSegmentationChart />
       </div>

@@ -28,7 +28,6 @@ const s3Client = new S3Client({
     secretAccessKey: R2_SECRET_ACCESS_KEY!, // Add non-null assertion
   },
 });
-
 export async function POST(req: Request) {
   // Basic check for environment variables at runtime
   if (

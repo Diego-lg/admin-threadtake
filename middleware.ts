@@ -1,118 +1,134 @@
-import { withAuth, NextRequestWithAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt"; // Use getToken to check session manually
 import { UserRole } from "@prisma/client";
 
 // Define allowed origins
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://treadheaven-storefront.vercel.app", // Main storefront production URL
-        "https://treadheaven-storefront-q1lukl62u-diegolgs-projects-800e72ea.vercel.app", // Specific storefront preview URL
-        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null, // This admin app's Vercel URL
-      ].filter(Boolean) as string[]) // Filter out null if VERCEL_URL isn't set
-    : ["http://localhost:3001", "http://localhost:3000"]; // Allow storefront dev (:3001) and admin dev (:3000)
+        "https://treadheaven-storefront.vercel.app",
+        "https://treadheaven-storefront-q1lukl62u-diegolgs-projects-800e72ea.vercel.app",
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+      ].filter(Boolean) as string[])
+    : ["http://localhost:3001", "http://localhost:3000"]; // Ensure frontend origin is listed
 
-export default withAuth(
-  // `withAuth` augments `Request` with `req.nextauth`
-  function middleware(req: NextRequestWithAuth) {
-    const origin = req.headers.get("origin");
-    const pathname = req.nextUrl.pathname;
+const secret = process.env.NEXTAUTH_SECRET; // Needed for getToken
 
-    // --- CORS Handling for API routes ---
-    if (pathname.startsWith("/api/")) {
-      const isAllowedOrigin = origin && allowedOrigins.includes(origin);
+// --- Main Middleware Function ---
+export async function middleware(req: NextRequest) {
+  console.log(
+    `[Middleware START] Method: ${req.method}, Path: ${req.nextUrl.pathname}`
+  ); // <-- ADD THIS LOG
+  const origin = req.headers.get("origin");
+  const pathname = req.nextUrl.pathname;
+  const isApiRoute = pathname.startsWith("/api/");
+  const isAllowedOrigin = origin && allowedOrigins.includes(origin);
 
-      // Handle Preflight requests
-      if (req.method === "OPTIONS") {
-        const response = new NextResponse(null, { status: 204 }); // No Content
-        // Set CORS headers for OPTIONS response only if origin is allowed
-        if (isAllowedOrigin) {
-          response.headers.set("Access-Control-Allow-Origin", origin);
-          response.headers.set("Access-Control-Allow-Credentials", "true");
-          response.headers.set(
-            "Access-Control-Allow-Methods",
-            "GET,DELETE,PATCH,POST,PUT,OPTIONS"
-          );
-          response.headers.set(
-            "Access-Control-Allow-Headers",
-            "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
-          );
-        } else {
-          // Optionally log blocked origins
-          if (origin)
-            console.warn(`Blocked OPTIONS request from origin: ${origin}`);
-        }
-        return response;
-      }
-
-      // Handle actual API requests
-      const response = NextResponse.next(); // Let the request proceed to the API route handler
-
-      // Add CORS headers to the actual response if origin is allowed
-      if (isAllowedOrigin) {
-        response.headers.set("Access-Control-Allow-Origin", origin);
-        response.headers.set("Access-Control-Allow-Credentials", "true");
-        // These might not be strictly necessary on the actual response but are often included
-        response.headers.set(
-          "Access-Control-Allow-Methods",
-          "GET,DELETE,PATCH,POST,PUT,OPTIONS"
+  // --- Step 1: Handle CORS Preflight (OPTIONS) for ALL API routes ---
+  if (isApiRoute && req.method === "OPTIONS") {
+    if (isAllowedOrigin) {
+      console.log(
+        `[Middleware] Handling OPTIONS for ${pathname} from allowed origin: ${origin}`
+      );
+      const response = new NextResponse(null, { status: 204 });
+      response.headers.set("Access-Control-Allow-Origin", origin);
+      response.headers.set("Access-Control-Allow-Credentials", "true");
+      response.headers.set(
+        "Access-Control-Allow-Methods",
+        "GET,DELETE,PATCH,POST,PUT,OPTIONS"
+      );
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
+      );
+      return response; // Return immediately
+    } else {
+      if (origin)
+        console.warn(
+          `[Middleware] Blocked OPTIONS request to ${pathname} from origin: ${origin}`
         );
-        response.headers.set(
-          "Access-Control-Allow-Headers",
-          "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
-        );
-      } else {
-        // Optionally log blocked origins
-        if (origin) console.warn(`Blocked API request from origin: ${origin}`);
-        // You could return a 403 Forbidden here, but typically letting the browser enforce CORS is sufficient
-        // return new NextResponse(null, { status: 403 });
-      }
+      return new NextResponse(null, { status: 204 }); // Return simple response
+    }
+  }
 
-      return response; // Return the response (potentially with CORS headers added)
+  // --- Step 2: Handle Actual API Requests (GET, POST, etc.) ---
+  // Add CORS headers to the outgoing response if origin is allowed
+  if (isApiRoute && req.method !== "OPTIONS") {
+    const response = NextResponse.next(); // Let request proceed to the API route handler
+
+    // Add CORS headers to the *final* response by modifying the response object
+    // Note: Modifying headers on NextResponse.next() is complex.
+    // A common pattern is to set request headers to pass info downstream,
+    // or handle final response headers within the API route itself.
+    // However, for basic Allow-Origin, adding it here might suffice.
+    if (isAllowedOrigin) {
+      response.headers.set("Access-Control-Allow-Origin", origin);
+      response.headers.set("Access-Control-Allow-Credentials", "true");
+      console.log(
+        `[Middleware] Added CORS headers for actual request to ${pathname} from origin: ${origin}`
+      );
+    } else {
+      if (origin)
+        console.warn(
+          `[Middleware] Blocked API request (${req.method}) to ${pathname} from origin: ${origin}`
+        );
+      // Consider if you want to block the request here entirely if origin is not allowed
+      // return new NextResponse("Forbidden: Invalid Origin", { status: 403 });
+    }
+    return response; // Continue to the API route
+  }
+
+  // --- Step 3: Authentication/Authorization Handling for NON-API routes ---
+  // Define protected paths (adjust as needed)
+  const protectedPaths = ["/dashboard", "/admin"]; // Example protected paths
+  const requiresAuth = protectedPaths.some((path) => pathname.startsWith(path));
+
+  if (requiresAuth) {
+    if (!secret) {
+      console.error("Missing NEXTAUTH_SECRET environment variable");
+      return new NextResponse("Server configuration error", { status: 500 });
     }
 
-    // --- Auth Handling for non-API routes (original logic) ---
-    // This part runs only if the path DOES NOT start with /api/ AND the `authorized` callback below returned true.
-    // console.log("Authenticated user token for non-API route:", req.nextauth.token);
-    return NextResponse.next(); // Proceed if authorized for non-API routes
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        const pathname = req.nextUrl.pathname;
+    const token = await getToken({ req, secret });
 
-        // If it's an API route, consider it authorized at this stage.
-        // Actual access control is handled by the CORS origin check above
-        // and any specific auth logic within the API route itself.
-        if (pathname.startsWith("/api/")) {
-          return true;
-        }
+    // If no token, redirect to login
+    if (!token) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/login"; // Your login page path
+      url.searchParams.set("callbackUrl", req.nextUrl.pathname); // Optional: redirect back after login
+      console.log("[Middleware] No token found, redirecting to login.");
+      return NextResponse.redirect(url);
+    }
 
-        // For non-API routes, enforce the original ADMIN role check.
-        return !!token && token.role === UserRole.ADMIN;
-      },
-    },
-    // If authorized callback returns false for a non-API route, redirect to login
-    // pages: { signIn: '/login' } // Ensure this is configured in your main [...nextauth]/route.ts options
+    // Example: Check for ADMIN role for specific paths
+    if (pathname.startsWith("/admin") && token.role !== UserRole.ADMIN) {
+      console.log("[Middleware] Unauthorized access attempt to /admin.");
+      const url = req.nextUrl.clone();
+      url.pathname = "/unauthorized"; // Or redirect to home or login
+      return NextResponse.redirect(url); // Redirect if not ADMIN
+    }
+
+    // If token exists and role is sufficient, allow access
+    console.log("[Middleware] Auth check passed for protected route.");
+    return NextResponse.next(); // Allow access to the protected page
   }
-);
 
-// Apply middleware to both dashboard routes AND API routes, excluding static assets etc.
+  // --- Step 4: Default - Allow all other requests (public pages, etc.) ---
+  return NextResponse.next();
+}
+
+// --- Middleware Config (Matcher) ---
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - /login (login page - handled by next-auth redirect)
-     * - /register (registration page - assuming public)
-     * - /images/ (example public image folder - adjust if needed)
-     *
-     * This matcher now implicitly includes /api/* paths because they don't start
-     * with the excluded patterns. It also includes all other non-excluded paths
-     * for the dashboard auth check.
+     * Explicitly match all API routes for CORS handling.
      */
-    "/((?!_next/static|_next/image|favicon.ico|login|register|images/).*)",
+    "/api/:path*",
+    /*
+     * Match other paths for potential authentication, excluding static assets,
+     * public auth pages, and other specific exclusions.
+     * The middleware function itself determines if auth is needed.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|images/|login|register|unauthorized).*)", // Added /unauthorized exclusion
   ],
 };

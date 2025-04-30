@@ -32,8 +32,16 @@ export async function GET(req: Request) {
       orderBy: {
         updatedAt: "desc", // Or createdAt, depending on desired order
       },
-      // Select specific fields if needed, otherwise Prisma returns all
-      // select: { ... }
+      // Include related data needed by the frontend
+      include: {
+        product: {
+          include: {
+            images: true, // Include product images
+          },
+        },
+        color: true, // Include color details
+        size: true, // Include size details
+      },
     });
 
     return NextResponse.json(designs);

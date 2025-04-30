@@ -9,11 +9,14 @@ export async function GET(req: Request) {
     const searchTerm = searchParams.get("search") || undefined;
     const tagsParam = searchParams.get("tags") || undefined;
     const sortBy = searchParams.get("sort") || "newest"; // Default to 'newest'
+    const creatorId = searchParams.get("creatorId") || undefined; // <-- Read creatorId
 
     // --- Build Prisma Query Conditions for PRODUCTS ---
     const whereClause: Prisma.ProductWhereInput = {
       isArchived: false, // Only fetch active products
       savedDesignId: { not: null }, // Only fetch products derived from designs
+      // Add creator filter if creatorId is provided
+      ...(creatorId && { savedDesign: { userId: creatorId } }),
     };
 
     // Add search condition (searching description and tags)
@@ -43,9 +46,14 @@ export async function GET(req: Request) {
         // Apply tag filter directly to the Product's related SavedDesign
         // This assumes that if 'searchTerm' is also present, the OR condition
         // correctly handles the nested savedDesign filter.
-        whereClause.savedDesign = {
-          tags: { hasSome: tagsArray },
-        };
+        // Correctly merge tag filter with existing savedDesign conditions
+        if (whereClause.savedDesign) {
+          // If savedDesign filter already exists (e.g., from creatorId), add tags to it
+          whereClause.savedDesign.tags = { hasSome: tagsArray };
+        } else {
+          // Otherwise, create the savedDesign filter with just tags
+          whereClause.savedDesign = { tags: { hasSome: tagsArray } };
+        }
         // Note: If both searchTerm and tagsParam are provided, this might need
         // more complex merging depending on desired AND/OR logic between
         // the search term hitting savedDesign fields and the tag filter.
@@ -70,6 +78,7 @@ export async function GET(req: Request) {
       searchTerm,
       tagsParam,
       sortBy,
+      creatorId, // <-- Log creatorId
     });
     console.log(
       "[MARKETPLACE_PRODUCTS_GET] Prisma Where Clause:",

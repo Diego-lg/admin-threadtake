@@ -4,7 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 
 import prismadb from "@/lib/prismadb"; // Assuming prismadb is exported from here
-import { User } from "@prisma/client";
+import { User, UserRole } from "@prisma/client";
 
 // Define authOptions here
 export const authOptions: AuthOptions = {
@@ -112,6 +112,18 @@ export const authOptions: AuthOptions = {
         token.profileCardBackground = prismaUser.profileCardBackground;
         token.bio = prismaUser.bio;
         token.portfolioUrl = prismaUser.portfolioUrl;
+
+        // Explicitly add the JWT token string to the token object
+        // This is the token that will be passed to the session callback
+        // Note: NextAuth handles the actual signing/encryption of the JWT
+        // The 'token' object here represents the payload that will be signed
+        // We are adding a property to this payload.
+        // The actual JWT string is not directly available here in a simple way.
+        // Let's adjust the approach: we need to add the *claims* to the token,
+        // and NextAuth will generate the JWT. The session callback then gets this token.
+        // We don't need to manually add the JWT string itself here.
+        // The issue is likely accessing the *claims* from the session object on the frontend.
+        // Let's ensure the session object gets the necessary claims.
       }
 
       // Handle session updates triggered by the update() function
@@ -158,46 +170,56 @@ export const authOptions: AuthOptions = {
         "[NextAuth Session Callback] START - Incoming Token:",
         JSON.stringify(token)
       ); // DEBUG LOG
-      if (token?.id && session.user) {
-        console.log(
-          `[NextAuth Session Callback] Triggered for token ID: ${token.id}`
-        ); // DEBUG LOG
-        // Fetch the latest user data from DB using the ID from the token
-        const userFromDb = await prismadb.user.findUnique({
-          where: { id: token.id as string },
-        });
-        console.log(
-          `[NextAuth Session Callback] User fetched from DB:`,
-          userFromDb
-        ); // DEBUG LOG
-        if (userFromDb) {
-          // Populate session.user with fresh data from the database
-          session.user.id = userFromDb.id;
-          session.user.name = userFromDb.name;
-          session.user.email = userFromDb.email;
-          session.user.image = userFromDb.image; // Include the image URL
-          session.user.role = userFromDb.role;
-          session.user.profileCardBackground = userFromDb.profileCardBackground; // Add background URL
-          session.user.bio = userFromDb.bio; // Add bio
-          session.user.portfolioUrl = userFromDb.portfolioUrl; // Add portfolio URL
-          // Add any other user fields you want in the session here
 
-          // Also update the token object passed to the session callback
-          // This might help in edge cases, although jwt callback should handle token updates
-          token.name = userFromDb.name;
-          token.image = userFromDb.image;
-          token.role = userFromDb.role;
-          token.profileCardBackground = userFromDb.profileCardBackground;
-          token.bio = userFromDb.bio;
-          token.portfolioUrl = userFromDb.portfolioUrl;
-        } else {
-          // Handle case where user might not be found in DB (optional, depends on logic)
-          // For safety, maybe clear parts of the session or return unmodified session
-          console.error(
-            `Session callback: User with id ${token.id} not found in DB.`
-          );
-        }
+      // Ensure session.user exists
+      // Ensure session.user exists and has the correct type structure
+      if (!session.user) {
+        // Initialize with required properties, casting from token if available
+        session.user = {
+          id: token?.id as string, // Assuming id is always in token if token exists
+          role: token?.role as UserRole, // Cast role to UserRole enum
+          // Initialize other optional properties to null or undefined
+          name: null,
+          email: null,
+          image: null,
+          profileCardBackground: null,
+          bio: null,
+          portfolioUrl: null,
+        };
       }
+
+      // Populate session.user with data from the token (which came from the JWT claims)
+      // This makes the token claims available on the client-side session object
+      // Populate session.user with data from the token (which came from the JWT claims)
+      // This makes the token claims available on the client-side session object
+      if (token) {
+        // Assign properties, ensuring correct types
+        session.user.id = token.id as string;
+        session.user.role = token.role as UserRole; // Correctly cast to UserRole enum
+        session.user.name = token.name as string | null;
+        session.user.email = token.email as string | null; // Assuming email is in token
+        session.user.image = token.image as string | null;
+        session.user.profileCardBackground = token.profileCardBackground as
+          | string
+          | null;
+        session.user.bio = token.bio as string | null;
+        session.user.portfolioUrl = token.portfolioUrl as string | null;
+
+        // If you need the raw JWT string on the client, you would add it here
+        // However, this is generally discouraged for security reasons.
+        // The standard approach is to use the claims from the token.
+        // If your backend API requires the raw JWT string in the Authorization header,
+        // you might need to expose it, but be aware of the risks.
+        // For now, let's assume the backend validates the JWT claims implicitly
+        // when the cookie is sent, or expects the user ID/role from the token.
+
+        // If your backend *specifically* needs the raw JWT string in the header,
+        // you would need to find a way to access it here and add it to the session.
+        // This is not straightforward with the default NextAuth setup.
+        // A common pattern is to use a custom API route for protected data
+        // that verifies the session server-side using `getServerSession`.
+      }
+
       console.log(`[NextAuth Session Callback] Returning session:`, session); // DEBUG LOG
       return session; // Return the potentially modified session
     },

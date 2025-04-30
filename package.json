@@ -50,7 +50,6 @@
     "react-dom": "^18.0.0",
     "react-hook-form": "^7.54.2",
     "react-hot-toast": "^2.5.1",
-    "react-simple-maps": "^3.0.0",
     "react-tooltip": "^5.28.0",
     "recharts": "^2.15.1",
     "shadcn-ui": "^0.9.4",
