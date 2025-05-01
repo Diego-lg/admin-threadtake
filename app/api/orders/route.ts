@@ -1,13 +1,29 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth"; // Updated import path
+import { NextRequest, NextResponse } from "next/server"; // Import NextRequest
+import { getToken } from "next-auth/jwt"; // Use getToken
+// import { getServerSession } from "next-auth/next"; // No longer needed
+// import { authOptions } from "@/lib/auth"; // No longer needed
 import prismadb from "@/lib/prismadb";
 
+const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
+
 // GET /api/orders - Get order history for the logged-in user
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Add req parameter
+  if (!secret) {
+    console.error("[ORDERS_GET] Missing NEXTAUTH_SECRET environment variable");
+    // Add CORS header for config error response (optional but good practice)
+    return new NextResponse("Server configuration error", {
+      status: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "https://www.threadtake.com",
+        "Access-Control-Allow-Credentials": "true",
+      },
+    });
+  }
+
   try {
-    const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    const token = await getToken({ req, secret });
+    const userId = token?.id || token?.sub; // Get user ID from token (prioritize 'id')
 
     if (!userId) {
       // Add CORS header for unauthenticated response
