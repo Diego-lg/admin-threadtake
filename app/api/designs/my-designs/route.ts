@@ -102,20 +102,21 @@ export async function GET(req: NextRequest) {
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma findMany Query"); // End timer for findMany
 
-    // Fetch total count for pagination AFTER fetching designs
-    console.time("[MY_DESIGNS_GET] Prisma Count Query"); // Start timer for count
-    const totalDesigns = await prismadb.savedDesign.count({
-      where: {
-        userId: userId,
-      },
-    });
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // End timer for count
+    // REMOVED: Total count query to improve performance
+    // console.time("[MY_DESIGNS_GET] Prisma Count Query");
+    // const totalDesigns = await prismadb.savedDesign.count({
+    //   where: {
+    //     userId: userId,
+    //   },
+    // });
+    // console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query");
 
+    // Return only designs and current page. Frontend will handle "Load More" differently.
     return NextResponse.json({
       designs,
-      totalDesigns,
+      // totalDesigns, // Removed
       currentPage: page,
-      totalPages: Math.ceil(totalDesigns / limit),
+      // totalPages: Math.ceil(totalDesigns / limit), // Removed
     });
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
