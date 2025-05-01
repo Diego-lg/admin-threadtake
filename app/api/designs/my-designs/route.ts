@@ -71,8 +71,15 @@ export async function GET(req: NextRequest) {
       // Include related data needed by the frontend
       include: {
         product: {
-          include: {
-            images: true, // Include product images
+          select: {
+            // Select only necessary product fields
+            id: true,
+            name: true,
+            images: {
+              // Limit images
+              take: 1,
+              select: { url: true },
+            },
           },
         },
         color: true, // Include color details
