@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 // import { getServerSession } from "next-auth/next"; // <-- Use getToken instead
 import { getToken } from "next-auth/jwt"; // <-- Import getToken
 
@@ -20,7 +20,11 @@ export async function GET(req: Request) {
   try {
     console.log("[MY_DESIGNS_GET] Attempting to get token...");
     // Use getToken to decode the JWT directly from the request
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const nextReq = req as NextRequest; // Cast req to NextRequest
+    const token = await getToken({
+      req: nextReq,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
     console.log(
       "[MY_DESIGNS_GET] Token retrieved:",
       token ? `Token sub (user ID): ${token.sub}` : "Token is NULL"
