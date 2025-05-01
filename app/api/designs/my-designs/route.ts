@@ -9,6 +9,11 @@ import prismadb from "@/lib/prismadb";
 const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "20", 10);
+  const skip = (page - 1) * limit;
+
   // Change type to NextRequest
   // --- DEBUGGING VERCEL AUTH ---
   console.log("[MY_DESIGNS_GET] Request received. Checking environment...");
@@ -60,7 +65,17 @@ export async function GET(req: NextRequest) {
     const userId = userIdFromToken as string; // Use the ID from the token
 
     // Fetch designs for the authenticated user using the correct model name
+    // Fetch total count for pagination
+    const totalDesigns = await prismadb.savedDesign.count({
+      where: {
+        userId: userId,
+      },
+    });
+
+    // Fetch paginated designs
     const designs = await prismadb.savedDesign.findMany({
+      skip: skip,
+      take: limit,
       // Corrected model name
       where: {
         userId: userId,
@@ -100,7 +115,12 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json(designs);
+    return NextResponse.json({
+      designs,
+      totalDesigns,
+      currentPage: page,
+      totalPages: Math.ceil(totalDesigns / limit),
+    });
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
     return new NextResponse("Internal error", { status: 500 });
