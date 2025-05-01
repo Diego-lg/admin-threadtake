@@ -117,7 +117,15 @@ export async function GET(req: Request) {
             ratingCount: true,
             createdAt: true,
             updatedAt: true,
-            // DO NOT include nested user, color, size objects here for performance
+            user: {
+              // Select minimal creator details
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
+            },
+            // DO NOT include nested color, size objects here for performance
           },
         },
       },
@@ -162,10 +170,15 @@ export async function GET(req: Request) {
           // color: design.color, // Not selected (nested object)
           // size: design.size, // Not selected (nested object)
 
-          // --- Creator details (only ID selected from savedDesign) ---
-          // Frontend will need to fetch full creator details separately if needed
-          creator: { id: design.userId }, // Provide only the creator's ID
-          // creator: design.user // Full user object not included
+          // --- Creator details (selected from savedDesign.user) ---
+          creator: design.user
+            ? {
+                // Use selected user details
+                id: design.user.id,
+                name: design.user.name,
+                image: design.user.image,
+              }
+            : null,
 
           // --- Stats (selected from savedDesign) ---
           viewCount: design.viewCount,
