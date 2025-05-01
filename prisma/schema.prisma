@@ -294,6 +294,7 @@ model SavedDesign {
   @@index([userId, isShared]) // Index for user's shared designs
   @@index([tags]) // Index for searching by tags
   @@index([averageRating]) // Index for sorting/filtering by rating
+@@index([userId, updatedAt]) // Index for user designs sorted by update time
 }
 
 // --- Enums for SalesGoal ---
