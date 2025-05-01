@@ -86,35 +86,26 @@ export async function GET(req: NextRequest) {
       orderBy: {
         updatedAt: "desc", // Or createdAt, depending on desired order
       },
-      // Include related data needed by the frontend
-      include: {
-        product: {
-          select: {
-            // Select only necessary product fields
-            id: true,
-            name: true,
-            images: {
-              // Limit images
-              take: 1,
-              select: { url: true },
-            },
-          },
-        },
-        color: {
-          // Select only necessary color fields
-          select: {
-            id: true,
-            name: true,
-            value: true, // Assuming value (hex code) might be needed
-          },
-        },
-        size: {
-          // Select only necessary size fields
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+      // Select only the fields needed by the frontend component (my-designs-list.tsx)
+      // This avoids expensive joins from 'include'
+      select: {
+        id: true,
+        userId: true, // Keep userId if needed elsewhere, though not directly used in list display
+        designImageUrl: true,
+        productId: true,
+        colorId: true,
+        sizeId: true,
+        customText: true,
+        shirtColorHex: true,
+        isLogoMode: true,
+        logoScale: true,
+        logoOffsetX: true,
+        logoOffsetY: true,
+        logoTargetPart: true,
+        uploadedLogoUrl: true,
+        uploadedPatternUrl: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma findMany Query"); // End timer for findMany
