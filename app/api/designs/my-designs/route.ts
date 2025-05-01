@@ -66,13 +66,16 @@ export async function GET(req: NextRequest) {
 
     // Fetch designs for the authenticated user using the correct model name
     // Fetch total count for pagination
+    console.time("[MY_DESIGNS_GET] Prisma Count Query"); // Start timer for count
     const totalDesigns = await prismadb.savedDesign.count({
       where: {
         userId: userId,
       },
     });
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // End timer for count
 
     // Fetch paginated designs
+    console.time("[MY_DESIGNS_GET] Prisma findMany Query"); // Start timer for findMany
     const designs = await prismadb.savedDesign.findMany({
       skip: skip,
       take: limit,
@@ -114,6 +117,7 @@ export async function GET(req: NextRequest) {
         },
       },
     });
+    console.timeEnd("[MY_DESIGNS_GET] Prisma findMany Query"); // End timer for findMany
 
     return NextResponse.json({
       designs,
