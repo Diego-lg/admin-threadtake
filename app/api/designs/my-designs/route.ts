@@ -82,8 +82,21 @@ export async function GET(req: NextRequest) {
             },
           },
         },
-        color: true, // Include color details
-        size: true, // Include size details
+        color: {
+          // Select only necessary color fields
+          select: {
+            id: true,
+            name: true,
+            value: true, // Assuming value (hex code) might be needed
+          },
+        },
+        size: {
+          // Select only necessary size fields
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
