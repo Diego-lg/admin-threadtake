@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
     const userId = userIdFromToken as string; // Use the ID from the token
 
     // Fetch designs for the authenticated user using the correct model name
+    console.log("[MY_DESIGNS_GET] Preparing to execute findMany query..."); // Add log before query block
     // Fetch paginated designs FIRST
     console.time("[MY_DESIGNS_GET] Prisma findMany Query"); // Start timer for findMany
     const designs = await prismadb.savedDesign.findMany({
