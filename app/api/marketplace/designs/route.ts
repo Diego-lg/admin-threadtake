@@ -100,30 +100,55 @@ export async function GET(req: Request) {
       where: whereClause,
       take: limit, // Add pagination limit
       skip: skip, // Add pagination offset
-      // Restore full includes, hoping pagination makes it fast enough
+      // Use precise select based on frontend component needs
       include: {
-        // Include data needed for display
-        images: { take: 1 }, // Get first image of the derived product
+        images: {
+          // Select only URL of first image
+          take: 1,
+          select: { url: true },
+        },
         savedDesign: {
-          // Include the original design details
-          include: {
+          // Select specific fields from SavedDesign and its relations
+          select: {
+            id: true,
+            designImageUrl: true,
+            mockupImageUrl: true,
+            description: true,
+            tags: true,
+            customText: true,
+            usageRights: true,
+            viewCount: true,
+            averageRating: true,
+            ratingCount: true,
+            createdAt: true,
+            updatedAt: true,
             user: {
-              // Include the creator details
+              // Select required creator fields
               select: {
-                // Still select specific user fields to avoid overfetching password etc.
                 id: true,
                 name: true,
                 image: true,
-                bio: true,
-                profileCardBackground: true,
+                // bio and profileCardBackground not directly used in list item, omit for now
               },
             },
-            color: true, // Include full color object
-            size: true, // Include full size object
+            color: {
+              // Select required color fields
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
+            size: {
+              // Select required size fields
+              select: {
+                id: true,
+                name: true,
+                value: true,
+              },
+            },
           },
         },
-        // No need to include base product, color, size directly on Product
-        // as they are now part of the derived product itself or its linked savedDesign
       },
       orderBy: orderByClause,
       // TODO: Add pagination later if needed (take, skip) - Pagination added above
@@ -140,59 +165,53 @@ export async function GET(req: Request) {
     );
     // Optional: Log the raw products if needed for deep debugging (can be verbose)
     // console.log("[MARKETPLACE_PRODUCTS_GET] Raw Derived Products:", JSON.stringify(derivedProducts, null, 2));
-    // --- Map response to a structure expected by the frontend ---
-    // Using the fully included objects now
+    // --- Map response using the precisely selected fields ---
     const responseData = derivedProducts
       .filter((product) => product.savedDesign) // Ensure savedDesign is linked
       .map((product) => {
         const design = product.savedDesign!; // Non-null assertion as we filtered
+        // Note: design.user, design.color, design.size now only contain selected fields
         return {
           // --- Key identifiers ---
-          id: design.id, // Use the SavedDesign ID as the primary identifier for the *listing*
-          productId: product.id, // The actual Product ID being sold
+          id: design.id,
+          productId: product.id,
 
           // --- Product details (from derived product) ---
           name: product.name,
-          price: product.price,
-          productImage: product.images?.[0]?.url || "/placeholder.png", // Image from derived product
+          price: product.price, // Ensure backend sends as number/string compatible with frontend
+          productImage: product.images?.[0]?.url || "/placeholder.png",
 
-          // --- Design details (from savedDesign) ---
+          // --- Design details (selected from savedDesign) ---
           designImageUrl: design.designImageUrl,
           mockupImageUrl: design.mockupImageUrl,
-          customText: design.customText, // Included again
+          customText: design.customText,
           description: design.description,
           tags: design.tags,
-          usageRights: design.usageRights, // Included again
-          color: design.color, // Full color object included again
-          size: design.size, // Full size object included again
+          usageRights: design.usageRights,
+          color: design.color, // Contains selected { id, name, value }
+          size: design.size, // Contains selected { id, name, value }
 
-          // --- Creator details (from savedDesign.user) ---
+          // --- Creator details (selected from savedDesign.user) ---
           creator: design.user
             ? {
+                // Contains selected { id, name, image }
                 id: design.user.id,
                 name: design.user.name,
                 image: design.user.image,
-                bio: design.user.bio,
-                profileCardBackground: design.user.profileCardBackground,
               }
             : null,
 
-          // --- Stats (from savedDesign) ---
+          // --- Stats (selected from savedDesign) ---
           viewCount: design.viewCount,
           averageRating: design.averageRating,
           ratingCount: design.ratingCount,
-          createdAt: design.createdAt, // Use design creation time for "newest" if preferred over product time
+          createdAt: design.createdAt,
           updatedAt: design.updatedAt,
-
-          // --- Fields no longer directly applicable at top level ---
-          // isShared: design.isShared, // Implicitly true as we queried derived products
-          // product: undefined, // Base product info is not needed here
-          // user: undefined, // Replaced by creator
         };
       });
 
     console.log(
-      `[MARKETPLACE_PRODUCTS_GET] Mapped ${responseData.length} products for response (with full includes).`
+      `[MARKETPLACE_PRODUCTS_GET] Mapped ${responseData.length} products for response (with precise select).`
     );
     // Optional: Log the final response data if needed
     // console.log("[MARKETPLACE_PRODUCTS_GET] Final Response Data:", JSON.stringify(responseData, null, 2));
