@@ -6,8 +6,9 @@ import { UserRole } from "@prisma/client";
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://treadheaven-storefront.vercel.app",
-        "https://treadheaven-storefront-q1lukl62u-diegolgs-projects-800e72ea.vercel.app",
+        //treadheaven
+        "https://www.threadtake.com",
+        "https://threadtake.com",
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
       ].filter(Boolean) as string[])
     : ["http://localhost:3001", "http://localhost:3000"]; // Ensure frontend origin is listed

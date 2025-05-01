@@ -6,8 +6,8 @@ import { NextRequest, NextResponse } from "next/server"; // Import NextRequest a
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://treadheaven-storefront.vercel.app", // Main storefront production URL
-        "https://treadheaven-storefront-q1lukl62u-diegolgs-projects-800e72ea.vercel.app", // Specific storefront preview URL
+        "https://www.threadtake.com",
+        "https://threadtake.com",
         // Add other production origins if necessary
       ].filter(Boolean) as string[])
     : ["http://localhost:3001", "http://localhost:3000"]; // Allow storefront dev (:3001) and admin dev (:3000)
