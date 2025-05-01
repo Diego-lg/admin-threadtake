@@ -10,6 +10,9 @@ export async function GET(req: Request) {
     const tagsParam = searchParams.get("tags") || undefined;
     const sortBy = searchParams.get("sort") || "newest"; // Default to 'newest'
     const creatorId = searchParams.get("creatorId") || undefined; // <-- Read creatorId
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10); // Default limit to 20
+    const skip = (page - 1) * limit;
 
     // --- Build Prisma Query Conditions for PRODUCTS ---
     const whereClause: Prisma.ProductWhereInput = {
@@ -79,6 +82,8 @@ export async function GET(req: Request) {
       tagsParam,
       sortBy,
       creatorId, // <-- Log creatorId
+      page,
+      limit,
     });
     console.log(
       "[MARKETPLACE_PRODUCTS_GET] Prisma Where Clause:",
@@ -90,9 +95,11 @@ export async function GET(req: Request) {
     );
 
     // --- Fetch Derived Products ---
-    // --- Fetch Derived Products ---
+    console.time("[MARKETPLACE_PRODUCTS_GET] DB Query Time"); // Start timer
     const derivedProducts = await prismadb.product.findMany({
       where: whereClause,
+      take: limit, // Add pagination limit
+      skip: skip, // Add pagination offset
       include: {
         // Include data needed for display
         images: { take: 1 }, // Get first image of the derived product
@@ -119,9 +126,15 @@ export async function GET(req: Request) {
       orderBy: orderByClause,
       // TODO: Add pagination later if needed (take, skip)
     });
+    console.timeEnd("[MARKETPLACE_PRODUCTS_GET] DB Query Time"); // End timer
+
+    // Fetch total count for pagination metadata (optional but good for UI)
+    // Note: This adds another query, but it's usually fast if indexed.
+    // Consider if this is needed based on frontend requirements.
+    // const totalCount = await prismadb.product.count({ where: whereClause });
 
     console.log(
-      `[MARKETPLACE_PRODUCTS_GET] Found ${derivedProducts.length} raw derived products.`
+      `[MARKETPLACE_PRODUCTS_GET] Found ${derivedProducts.length} raw derived products for page ${page}.`
     );
     // Optional: Log the raw products if needed for deep debugging (can be verbose)
     // console.log("[MARKETPLACE_PRODUCTS_GET] Raw Derived Products:", JSON.stringify(derivedProducts, null, 2));
@@ -186,7 +199,9 @@ export async function GET(req: Request) {
     // Incrementing here might over-count views if users just browse.
     // Better to increment when a specific design detail is viewed (Phase 2?).
 
-    return NextResponse.json(responseData);
+    // Include pagination metadata in the response if needed
+    // return NextResponse.json({ data: responseData, total: totalCount, page, limit });
+    return NextResponse.json(responseData); // Returning only data for now
   } catch (error) {
     console.error("[MARKETPLACE_PRODUCTS_GET]", error); // Update log context
     return new NextResponse("Internal Error", { status: 500 });
