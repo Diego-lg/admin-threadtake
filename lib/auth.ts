@@ -68,10 +68,13 @@ export const authOptions: AuthOptions = {
           : `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax", // Keep lax for localhost development unless issues persist
+        // Use 'none' for production if backend/frontend are on different subdomains/domains
+        // Use 'lax' for development (localhost)
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production", // Use secure cookies in production
-        // domain: 'localhost' // Explicitly setting domain might help some browsers, but usually not needed for localhost
+        // Ensure secure is always true in production when sameSite is 'none'
+        secure: process.env.NODE_ENV === "production",
+        // domain: process.env.NODE_ENV === "production" ? ".threadtake.com" : undefined // Optional: Uncomment and set domain ONLY if frontend/backend are subdomains of threadtake.com
       },
     },
     // Add configurations for other cookies (callbackUrl, csrfToken) if needed,
