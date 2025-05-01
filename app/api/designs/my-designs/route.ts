@@ -1,10 +1,15 @@
-import { NextResponse } from "next/server"; // Remove NextRequest import if not needed elsewhere
-import { getServerSession } from "next-auth/next"; // <-- Revert back
+import { NextRequest, NextResponse } from "next/server"; // Import NextRequest
+import { getToken } from "next-auth/jwt"; // Use getToken to read JWT from cookie or header
 
 import prismadb from "@/lib/prismadb";
-import { authOptions } from "@/lib/auth"; // <-- Restore import
+// authOptions and getServerSession are no longer needed here
+// import { authOptions } from "@/lib/auth";
+// import { getServerSession } from "next-auth/next";
 
-export async function GET(req: Request) {
+const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
+
+export async function GET(req: NextRequest) {
+  // Change type to NextRequest
   // --- DEBUGGING VERCEL AUTH ---
   console.log("[MY_DESIGNS_GET] Request received. Checking environment...");
   console.log(
@@ -21,26 +26,38 @@ export async function GET(req: Request) {
   );
   // --- END DEBUGGING ---
 
-  try {
-    console.log("[MY_DESIGNS_GET] Attempting to get session...");
-    // Revert back to using getServerSession
-    const session = await getServerSession(authOptions);
-    console.log(
-      "[MY_DESIGNS_GET] Session retrieved:",
-      session ? `User ID: ${session.user?.id}` : "Session is NULL" // Log only essential info or null
-    ); // Log the session object concisely
+  // Check if secret is defined *before* the try block
+  if (!secret) {
+    console.error(
+      "[MY_DESIGNS_GET] Missing NEXTAUTH_SECRET environment variable"
+    );
+    return new NextResponse("Server configuration error", { status: 500 });
+  }
 
-    // Revert check back to session.user.id
-    if (!session?.user?.id) {
+  try {
+    console.log("[MY_DESIGNS_GET] Attempting to get token...");
+    // Use getToken to extract JWT payload from cookie or Authorization header
+    const token = await getToken({ req, secret }); // Pass the defined secret
+    console.log(
+      "[MY_DESIGNS_GET] Token retrieved:",
+      token ? `Token Sub: ${token.sub}, Token ID: ${token.id}` : "Token is NULL" // Log both sub and id if present
+    ); // Log token sub claim
+
+    // Check for token and 'sub' claim (standard JWT subject, usually user ID)
+    // Or check for 'id' if you added that explicitly in the jwt callback
+    const userIdFromToken = token?.id || token?.sub; // Prioritize 'id' if present
+
+    if (!userIdFromToken) {
       console.error(
-        // Use console.error for failures
-        "[MY_DESIGNS_GET] Authentication failed: No session or user ID found. Returning 401."
+        "[MY_DESIGNS_GET] Authentication failed: No token or sub/id claim found. Returning 401."
       );
       return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    console.log(`[MY_DESIGNS_GET] Authenticated user ID: ${session.user.id}`);
-    const userId = session.user.id; // Revert back to using session.user.id
+    console.log(
+      `[MY_DESIGNS_GET] Authenticated user ID from token: ${userIdFromToken}`
+    );
+    const userId = userIdFromToken as string; // Use the ID from the token
 
     // Fetch designs for the authenticated user using the correct model name
     const designs = await prismadb.savedDesign.findMany({

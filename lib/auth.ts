@@ -77,12 +77,12 @@ export const authOptions: AuthOptions = {
         // Explicitly set the domain for production cookies based on NEXTAUTH_URL
         // This helps ensure the browser sends the cookie correctly on requests to the backend API
         // Removes http(s):// prefix if present
-        // domain: // <-- Commented out for testing - let browser handle default scoping
-        //   process.env.NODE_ENV === "production"
-        //     ? process.env.NEXTAUTH_URL?.replace(/^https?:\/\//, "").split(
-        //         ":"
-        //       )[0] // Get domain part from NEXTAUTH_URL
-        //     : undefined,
+        domain:
+          process.env.NODE_ENV === "production"
+            ? process.env.NEXTAUTH_URL?.replace(/^https?:\/\//, "").split(
+                ":"
+              )[0] // Get domain part from NEXTAUTH_URL
+            : undefined,
       },
     },
     // Add configurations for other cookies (callbackUrl, csrfToken) if needed,
