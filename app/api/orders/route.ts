@@ -10,7 +10,14 @@ export async function GET() {
     const userId = session?.user?.id;
 
     if (!userId) {
-      return new NextResponse("Unauthenticated", { status: 401 });
+      // Add CORS header for unauthenticated response
+      return new NextResponse("Unauthenticated", {
+        status: 401,
+        headers: {
+          "Access-Control-Allow-Origin": "https://www.threadtake.com", // Or use '*' for testing, but be specific in production
+          "Access-Control-Allow-Credentials": "true", // If you need credentials
+        },
+      });
     }
 
     const orders = await prismadb.order.findMany({
@@ -53,9 +60,23 @@ export async function GET() {
       return { ...order, total };
     });
 
-    return NextResponse.json(ordersWithTotals);
+    // Add CORS header for successful response
+    const response = NextResponse.json(ordersWithTotals);
+    response.headers.set(
+      "Access-Control-Allow-Origin",
+      "https://www.threadtake.com"
+    ); // Or '*' for testing
+    response.headers.set("Access-Control-Allow-Credentials", "true");
+    return response;
   } catch (error) {
     console.error("[ORDERS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    // Add CORS header for error response
+    return new NextResponse("Internal Error", {
+      status: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "https://www.threadtake.com", // Or '*' for testing
+        "Access-Control-Allow-Credentials": "true",
+      },
+    });
   }
 }
