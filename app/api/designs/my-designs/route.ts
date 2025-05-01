@@ -5,17 +5,29 @@ import prismadb from "@/lib/prismadb";
 import { authOptions } from "@/lib/auth"; // Assuming authOptions are exported from lib/auth
 
 export async function GET(req: Request) {
+  // --- DEBUGGING VERCEL AUTH ---
+  console.log("[MY_DESIGNS_GET] Request received. Checking environment...");
+  console.log(
+    `[MY_DESIGNS_GET] NEXTAUTH_URL env var: ${process.env.NEXTAUTH_URL}`
+  );
+  console.log(
+    `[MY_DESIGNS_GET] NEXTAUTH_SECRET env var set: ${!!process.env
+      .NEXTAUTH_SECRET}`
+  );
+  // --- END DEBUGGING ---
+
   try {
     console.log("[MY_DESIGNS_GET] Attempting to get session...");
     const session = await getServerSession(authOptions);
     console.log(
       "[MY_DESIGNS_GET] Session retrieved:",
-      JSON.stringify(session, null, 2)
-    ); // Log the session object
+      session ? `User ID: ${session.user?.id}` : "Session is NULL" // Log only essential info or null
+    ); // Log the session object concisely
 
     if (!session?.user?.id) {
-      console.log(
-        "[MY_DESIGNS_GET] Authentication failed: No session or user ID found."
+      console.error(
+        // Use console.error for failures
+        "[MY_DESIGNS_GET] Authentication failed: No session or user ID found. Returning 401."
       );
       return new NextResponse("Unauthenticated", { status: 401 });
     }
