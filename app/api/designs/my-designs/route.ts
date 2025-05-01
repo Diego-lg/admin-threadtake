@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
+// import { getServerSession } from "next-auth/next"; // <-- Use getToken instead
+import { getToken } from "next-auth/jwt"; // <-- Import getToken
 
 import prismadb from "@/lib/prismadb";
-import { authOptions } from "@/lib/auth"; // Assuming authOptions are exported from lib/auth
+// import { authOptions } from "@/lib/auth"; // <-- Not needed for getToken directly
 
 export async function GET(req: Request) {
   // --- DEBUGGING VERCEL AUTH ---
@@ -17,23 +18,27 @@ export async function GET(req: Request) {
   // --- END DEBUGGING ---
 
   try {
-    console.log("[MY_DESIGNS_GET] Attempting to get session...");
-    const session = await getServerSession(authOptions);
+    console.log("[MY_DESIGNS_GET] Attempting to get token...");
+    // Use getToken to decode the JWT directly from the request
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     console.log(
-      "[MY_DESIGNS_GET] Session retrieved:",
-      session ? `User ID: ${session.user?.id}` : "Session is NULL" // Log only essential info or null
-    ); // Log the session object concisely
+      "[MY_DESIGNS_GET] Token retrieved:",
+      token ? `Token sub (user ID): ${token.sub}` : "Token is NULL"
+    ); // Log the token or null
 
-    if (!session?.user?.id) {
+    // Check if token exists and has the user ID (usually in 'sub' claim for JWT strategy)
+    if (!token?.sub) {
       console.error(
         // Use console.error for failures
-        "[MY_DESIGNS_GET] Authentication failed: No session or user ID found. Returning 401."
+        "[MY_DESIGNS_GET] Authentication failed: No token or sub claim found. Returning 401."
       );
       return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    console.log(`[MY_DESIGNS_GET] Authenticated user ID: ${session.user.id}`);
-    const userId = session.user.id;
+    console.log(
+      `[MY_DESIGNS_GET] Authenticated user ID (from token.sub): ${token.sub}`
+    );
+    const userId = token.sub; // Use the 'sub' claim as the user ID
 
     // Fetch designs for the authenticated user using the correct model name
     const designs = await prismadb.savedDesign.findMany({
