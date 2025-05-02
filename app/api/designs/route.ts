@@ -12,11 +12,27 @@ interface JwtPayload {
   exp: number;
 }
 
+// Helper function to get or create the general settings
+async function getGeneralSettings() {
+  let settings = await prismadb.generalSetting.findFirst();
+  if (!settings) {
+    // If no settings exist, create the first one with defaults
+    // This ensures the application has a baseline setting
+    console.log("No general settings found, creating default settings...");
+    settings = await prismadb.generalSetting.create({
+      data: {
+        // defaultMaxSavedDesigns will use the @default(10) from schema
+      },
+    });
+    console.log("Default general settings created:", settings);
+  }
+  return settings;
+}
+
 // POST /api/designs - Create a new saved design for the logged-in user
 export async function POST(req: Request) {
   try {
     // 1. Get Authorization header
-    // Access header directly from the request object
     const authHeader = req.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -46,6 +62,44 @@ export async function POST(req: Request) {
     if (!userId) {
       return new NextResponse("User ID not found in token", { status: 401 });
     }
+
+    // --- Design Limit Check START ---
+    // Fetch user details and general settings concurrently
+    const [user, generalSettings] = await Promise.all([
+      prismadb.user.findUnique({
+        where: { id: userId },
+        select: { maxSavedDesigns: true }, // Select only the needed field
+      }),
+      getGeneralSettings(), // Use helper to get/create settings
+    ]);
+
+    if (!user) {
+      return new NextResponse("User not found", { status: 404 });
+    }
+
+    // Determine the applicable limit
+    const limit =
+      user.maxSavedDesigns ?? generalSettings.defaultMaxSavedDesigns;
+
+    // Get the current count of saved designs for the user
+    const currentDesignCount = await prismadb.savedDesign.count({
+      where: { userId: userId },
+    });
+
+    // Check if the user has reached the limit
+    if (currentDesignCount >= limit) {
+      console.log(
+        `User ${userId} reached design limit (${currentDesignCount}/${limit}).`
+      );
+      return new NextResponse(
+        `You have reached the maximum limit of ${limit} saved designs.`,
+        { status: 403 } // 403 Forbidden is appropriate here
+      );
+    }
+    console.log(
+      `User ${userId} design count: ${currentDesignCount}/${limit}. Proceeding.`
+    );
+    // --- Design Limit Check END ---
 
     const body = await req.json();
     const {
@@ -83,34 +137,36 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate that the provided IDs exist
-    const productExists = await prismadb.product.findUnique({
-      where: { id: productId },
-    });
+    // Validate that the provided IDs exist (Keep existing validation)
+    const [productExists, colorExists, sizeExists] = await Promise.all([
+      prismadb.product.findUnique({
+        where: { id: productId },
+        select: { id: true },
+      }), // Select only id
+      prismadb.color.findUnique({
+        where: { id: colorId },
+        select: { id: true },
+      }), // Select only id
+      prismadb.size.findUnique({ where: { id: sizeId }, select: { id: true } }), // Select only id
+    ]);
+
     if (!productExists) {
       return new NextResponse(`Product with ID ${productId} not found`, {
         status: 404,
       });
     }
-
-    const colorExists = await prismadb.color.findUnique({
-      where: { id: colorId },
-    });
     if (!colorExists) {
       return new NextResponse(`Color with ID ${colorId} not found`, {
         status: 404,
       });
     }
-
-    const sizeExists = await prismadb.size.findUnique({
-      where: { id: sizeId },
-    });
     if (!sizeExists) {
       return new NextResponse(`Size with ID ${sizeId} not found`, {
         status: 404,
       });
     }
 
+    // Proceed with creating the design if limit not reached
     const savedDesign = await prismadb.savedDesign.create({
       data: {
         userId: userId, // Use userId from verified token
@@ -133,7 +189,7 @@ export async function POST(req: Request) {
         description: description || null,
         // Ensure tags is an array, default to empty if not provided or invalid
         tags: Array.isArray(tags)
-          ? tags.filter((tag) => typeof tag === "string")
+          ? tags.filter((tag): tag is string => typeof tag === "string") // Type guard for filtering
           : [],
         // viewCount defaults to 0 in schema, no need to set here
         // --- End save Phase 1 Fields ---
@@ -149,15 +205,19 @@ export async function POST(req: Request) {
     return NextResponse.json(savedDesign);
   } catch (error) {
     console.error("[DESIGNS_POST]", error);
+    // Check if the error is a Prisma known request error (e.g., unique constraint violation)
+    // This part is optional but can provide more specific error messages if needed.
+    // if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    //   // Handle specific Prisma errors
+    // }
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
 
-// GET /api/designs - Get all saved designs for the logged-in user
+// GET /api/designs - Get all saved designs for the logged-in user (Keep existing GET handler)
 export async function GET(req: Request) {
   try {
     // 1. Get Authorization header
-    // Access header directly from the request object
     const authHeader = req.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {

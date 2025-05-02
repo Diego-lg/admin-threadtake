@@ -26,6 +26,8 @@ export type UserColumn = {
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  maxSavedDesigns: number | null; // User-specific setting (null means use default)
+  effectiveLimit: number; // The actual limit applied (user-specific or default)
 };
 
 // Define the columns for the DataTable
@@ -110,6 +112,34 @@ export const columns: ColumnDef<UserColumn>[] = [
   {
     accessorKey: "createdAt",
     header: "Date Registered",
+  },
+  {
+    accessorKey: "effectiveLimit",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Design Limit
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      );
+    },
+    cell: ({ row }) => {
+      const limit = row.original.effectiveLimit;
+      const isDefault = row.original.maxSavedDesigns === null;
+      return (
+        <div className="flex items-center">
+          <span>{limit}</span>
+          {isDefault && (
+            <Badge variant="outline" className="ml-2 text-xs">
+              Default
+            </Badge>
+          )}
+        </div>
+      );
+    },
   },
   {
     id: "actions",

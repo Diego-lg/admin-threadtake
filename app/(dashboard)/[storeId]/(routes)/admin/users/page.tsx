@@ -27,10 +27,15 @@ const UsersPage = async ({ params }: { params: { storeId: string } }) => {
       role: true,
       status: true,
       createdAt: true,
+      maxSavedDesigns: true, // Fetch the user-specific limit
       // emailVerified: true, // Include if needed in the table
       // image: true, // Include if needed
     },
   });
+
+  // Fetch general settings to know the default limit
+  const generalSettings = await prismadb.generalSetting.findFirst();
+  const defaultLimit = generalSettings?.defaultMaxSavedDesigns ?? 10; // Use 10 as fallback
 
   const formattedUsers: UserColumn[] = users.map((item) => ({
     id: item.id,
@@ -39,6 +44,9 @@ const UsersPage = async ({ params }: { params: { storeId: string } }) => {
     role: item.role,
     status: item.status,
     createdAt: format(item.createdAt, "MMMM do, yyyy"),
+    // Pass the actual limit or the default if user-specific is null
+    maxSavedDesigns: item.maxSavedDesigns, // Keep null if null
+    effectiveLimit: item.maxSavedDesigns ?? defaultLimit, // Calculate effective limit for display
   }));
 
   return (

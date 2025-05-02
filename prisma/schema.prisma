@@ -221,6 +221,7 @@ model User {
   orders         Order[] // Relation to user's orders
   savedDesigns   SavedDesign[] // Relation to user's saved designs
   ratings        Rating[]      // Relation to ratings submitted by the user
+  maxSavedDesigns Int?          // User-specific limit, null means use global default
 }
 
 model VerificationToken {
@@ -325,4 +326,18 @@ model SalesGoal {
 
   @@index([storeId])
   @@index([storeId, timePeriod]) // Index for fetching goals by store and period
+}
+
+// --- Model for General Settings ---
+model GeneralSetting {
+  id                    String @id @default(cuid()) // Unique ID for the settings record
+  defaultMaxSavedDesigns Int    @default(10) // Global default limit for saved designs
+  // Add other global settings here in the future if needed
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Ensure only one row can exist for general settings (optional but good practice)
+  // This requires a unique constraint on a field that will always have the same value.
+  // Example: Add a dummy field `singletonKey String @unique @default("SINGLETON")`
+  // Or manage this constraint at the application level (e.g., only ever create/update one record).
 }
