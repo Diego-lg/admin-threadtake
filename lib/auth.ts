@@ -44,10 +44,23 @@ export const authOptions: AuthOptions = {
         // Add check for user status
         if (user.status !== "ACTIVE") {
           // Assuming UserStatus enum values are strings like 'ACTIVE'
+          console.log(
+            `[Auth] Login denied: User ${user.email} account is inactive.`
+          ); // Log inactive attempt
           throw new Error("Account is inactive");
         }
 
+        // Check if the user has the ADMIN role
+        if (user.role !== UserRole.ADMIN) {
+          // Assuming UserRole enum exists and has ADMIN
+          console.log(
+            `[Auth] Login denied: User ${user.email} is not an admin.`
+          ); // Log non-admin attempt
+          throw new Error("Access denied: Admins only.");
+        }
+
         // Return user object if credentials are valid and account is active
+        console.log(`[Auth] Admin login successful: User ${user.email}`); // Log successful admin login
         return user;
       },
     }),

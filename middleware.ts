@@ -81,16 +81,23 @@ export async function middleware(req: NextRequest) {
 
   // --- Step 3: Authentication/Authorization Handling for NON-API routes ---
   // Define protected paths (adjust as needed)
-  const protectedPaths = ["/dashboard", "/admin"]; // Example protected paths
+  const protectedPaths = ["/", "/dashboard", "/admin"]; // Example protected paths (Added root '/')
   const requiresAuth = protectedPaths.some((path) => pathname.startsWith(path));
 
+  // --- Log path and auth requirement ---
+  console.log(`[Middleware] Path: ${pathname}, Requires Auth: ${requiresAuth}`);
+
   if (requiresAuth) {
+    console.log(`[Middleware] Checking token for protected path: ${pathname}`); // <-- ADD THIS LOG
     if (!secret) {
       console.error("Missing NEXTAUTH_SECRET environment variable");
       return new NextResponse("Server configuration error", { status: 500 });
     }
 
     const token = await getToken({ req, secret });
+    console.log(
+      `[Middleware] Token found: ${token ? JSON.stringify(token) : "null"}`
+    ); // <-- ADD THIS LOG
 
     // If no token, redirect to login
     if (!token) {
@@ -110,11 +117,19 @@ export async function middleware(req: NextRequest) {
     }
 
     // If token exists and role is sufficient, allow access
-    console.log("[Middleware] Auth check passed for protected route.");
+    console.log(
+      `[Middleware] Auth check passed for protected route: ${pathname}`
+    ); // <-- MODIFIED LOG
     return NextResponse.next(); // Allow access to the protected page
+  } else {
+    // <-- ADD THIS ELSE BLOCK
+    console.log(
+      `[Middleware] Path not protected or auth not required, allowing access: ${pathname}`
+    ); // <-- ADD THIS LOG
   }
 
   // --- Step 4: Default - Allow all other requests (public pages, etc.) ---
+  console.log(`[Middleware END] Allowing request for: ${pathname}`); // <-- ADD THIS LOG
   return NextResponse.next();
 }
 

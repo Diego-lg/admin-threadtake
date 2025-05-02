@@ -1,48 +1,54 @@
-"use client"; // <-- Make Navbar a Client Component for debugging
+"use client"; // Required for hooks like useSession
 
-import { useSession } from "next-auth/react"; // <-- Use client-side hook
+import { useSession } from "next-auth/react";
 import { AuthStatus } from "@/components/auth/AuthStatus";
-import { MainNav } from "@/components/main-nav";
-import StoreSwitcher from "@/components/store-switcher";
-import { Store } from "@prisma/client"; // Import Store type
-// Removed Clerk auth and redirect
-// import prismadb from "@/lib/prismadb"; // <-- Cannot use prismadb directly in client component
 import { ThemeToggle } from "./theme-toggle";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Bell, HelpCircle, Search } from "lucide-react";
 
-// Define props for Navbar
-interface NavbarProps {
-  stores: Store[];
-}
+// No props needed for this version of the Navbar
+// interface NavbarProps {}
 
-const Navbar = ({ stores = [] }: NavbarProps) => {
-  // Accept stores prop
-  // <-- Remove async
-  const { data: session, status } = useSession(); // <-- Get session using the hook
-  console.log("Navbar Client Session Status:", status); // <-- DEBUG LOG
-  console.log("Navbar Client Session Data:", session); // <-- DEBUG LOG
-  //const _userId = session?.user?.id; // Prefixed as unused for now
+const Navbar = (/* Props removed */) => {
+  const { data: session } = useSession(); // Get session
 
-  // Note: We might not need to redirect here. Access control should primarily be handled
-  // by middleware or on specific pages needing authentication.
-  // If a user needs to be logged in to see *any* navbar content, keep a check:
-  // if (!userId) {
-  //   redirect("/login"); // Redirect to NextAuth login page
-  // }
-
-  // Remove the temporary empty array, as stores are now passed via props
-  // const stores: any[] = []; // Provide an empty array for now
   return (
-    <div className="border-b">
-      <div className="flex h-16 items-center px-4">
-        <StoreSwitcher items={stores} /> {/* Pass the received stores prop */}
-        <MainNav className="mx-6" /> {/* Uncommented */}
-        <div className="ml-auto flex items-center space-x-4">
-          <ThemeToggle /> {/* Uncommented */}
+    <div className="border-b bg-white dark:bg-black border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+      {" "}
+      {/* Updated background and border for dark mode */}{" "}
+      {/* Added sticky positioning */}
+      <div className="flex h-16 items-center px-4 md:px-6">
+        {/* Search Input */}
+        <div className="relative flex-1 md:flex-grow-0">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search..."
+            className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[300px]" // Adjusted width and padding
+          />
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-grow" />
+
+        {/* Right side icons and user menu */}
+        <div className="ml-auto flex items-center space-x-2 sm:space-x-4">
+          <ThemeToggle />
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <HelpCircle className="h-5 w-5" />
+            <span className="sr-only">Help</span>
+          </Button>
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <Bell className="h-5 w-5" />
+            <span className="sr-only">Notifications</span>
+          </Button>
+          {/* AuthStatus likely renders the user avatar/menu */}
           <AuthStatus user={session?.user} />
-        </div>{" "}
+        </div>
       </div>
     </div>
   );
-}; // Removed async from function definition
+};
 
 export default Navbar;

@@ -42,9 +42,7 @@ export const ProductClient: React.FC<ProductClientProps> = ({ data }) => {
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
       />
-      <Heading title="API" description="API calls for Products" />
-      <Separator />
-      <ApiList entityName="products" entityIdName="productdId" />
+      {/* API List removed, moved to API Settings page */}
     </>
   );
 };

@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth"; // Import from the correct location
 
 import Navbar from "@/components/navBar";
+import Sidebar from "@/components/sidebar"; // Import the new Sidebar
 
 export default async function DashboardLayout({
   children,
@@ -31,17 +32,25 @@ export default async function DashboardLayout({
     redirect("/"); // Redirect if the specific store isn't found or doesn't belong to the user
   }
 
-  // Fetch all stores for the user to pass to the Navbar/StoreSwitcher
-  const stores = await prismadb.store.findMany({
-    where: {
-      userId,
-    },
-  });
+  // Removed the fetch for 'stores' as it's no longer needed by the updated Navbar
 
   return (
     <>
-      <Navbar stores={stores} /> {/* Pass stores to Navbar */}
-      {children}
+      <div className="flex h-screen overflow-hidden bg-white dark:bg-black">
+        {" "}
+        {/* Updated background */} {/* Main flex container */}
+        <Sidebar params={params} /> {/* Pass params to Sidebar */}
+        <div className="flex flex-col flex-1 overflow-y-auto">
+          {" "}
+          {/* Main content area */}
+          <Navbar /> {/* Updated Navbar (no props needed) */}
+          <main className="flex-1 p-4 md:p-6 lg:p-8">
+            {" "}
+            {/* Page content */}
+            {children}
+          </main>
+        </div>
+      </div>
     </>
   );
 }

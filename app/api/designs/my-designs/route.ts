@@ -71,33 +71,43 @@ export async function GET(req: NextRequest) {
     const designs = await prismadb.savedDesign.findMany({
       skip: skip,
       take: limit,
-      // Corrected model name
       where: {
         userId: userId,
       },
       orderBy: {
-        updatedAt: "desc", // Or createdAt, depending on desired order
+        updatedAt: "desc",
       },
-      // Select only the fields needed by the frontend component (my-designs-list.tsx)
-      // This avoids expensive joins from 'include'
-      select: {
-        id: true,
-        userId: true, // Keep userId if needed elsewhere, though not directly used in list display
-        designImageUrl: true,
-        productId: true,
-        colorId: true,
-        sizeId: true,
-        customText: true,
-        shirtColorHex: true,
-        isLogoMode: true,
-        logoScale: true,
-        logoOffsetX: true,
-        logoOffsetY: true,
-        logoTargetPart: true,
-        uploadedLogoUrl: true,
-        uploadedPatternUrl: true,
-        createdAt: true,
-        updatedAt: true,
+      // Use include to fetch related data needed by the frontend
+      include: {
+        product: {
+          select: {
+            // Select only necessary fields from product
+            id: true,
+            name: true,
+            images: {
+              // Include product images
+              select: { url: true },
+              take: 1, // Only need one image for preview
+            },
+          },
+        },
+        color: {
+          select: {
+            // Select only necessary fields from color
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
+        size: {
+          select: {
+            // Select only necessary fields from size
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
+        // Add other relations if needed by SavedDesignData type
       },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma findMany Query"); // End timer for findMany
@@ -112,12 +122,9 @@ export async function GET(req: NextRequest) {
     // console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query");
 
     // Return only designs and current page. Frontend will handle "Load More" differently.
-    return NextResponse.json({
-      designs,
-      // totalDesigns, // Removed
-      currentPage: page,
-      // totalPages: Math.ceil(totalDesigns / limit), // Removed
-    });
+    // Return the designs array directly
+    // Return the designs array wrapped in an object with currentPage
+    return NextResponse.json({ designs: designs, currentPage: page });
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
     return new NextResponse("Internal error", { status: 500 });

@@ -13,12 +13,13 @@ export async function POST(
     const userId = session?.user?.id;
     const body = await req.json();
 
+    // Destructure potentially missing fields
     const {
       name,
       price,
       categoryId,
-      colorId,
-      sizeId,
+      colorId: providedColorId, // Rename to avoid conflict
+      sizeId: providedSizeId, // Rename to avoid conflict
       images,
       isFeatured,
       isArchived,
@@ -39,12 +40,8 @@ export async function POST(
     if (!categoryId) {
       return new NextResponse("categoryId is required", { status: 400 });
     }
-    if (!colorId) {
-      return new NextResponse("colorId is required", { status: 400 });
-    }
-    if (!sizeId) {
-      return new NextResponse("sizeId is required", { status: 400 });
-    }
+    // Removed strict checks for colorId and sizeId
+
     if (!storeId) {
       return new NextResponse("Store ID is required", { status: 400 });
     }
@@ -60,15 +57,55 @@ export async function POST(
       return new NextResponse("Unauthorized", { status: 403 });
     }
 
+    // --- Determine default Color ID if not provided ---
+    let finalColorId = providedColorId;
+    if (!finalColorId) {
+      const defaultColor = await prismadb.color.findFirst({
+        where: { storeId },
+        orderBy: { createdAt: "asc" }, // Or any other logic to pick a default
+      });
+      if (!defaultColor) {
+        return new NextResponse(
+          "Default color not found for this store. Please create a color first.",
+          { status: 400 }
+        );
+      }
+      finalColorId = defaultColor.id;
+      console.log(
+        `[PRODUCTS_POST] No colorId provided, using default: ${finalColorId}`
+      );
+    }
+
+    // --- Determine default Size ID if not provided ---
+    let finalSizeId = providedSizeId;
+    if (!finalSizeId) {
+      const defaultSize = await prismadb.size.findFirst({
+        where: { storeId },
+        orderBy: { createdAt: "asc" }, // Or any other logic to pick a default
+      });
+      if (!defaultSize) {
+        return new NextResponse(
+          "Default size not found for this store. Please create a size first.",
+          { status: 400 }
+        );
+      }
+      finalSizeId = defaultSize.id;
+      console.log(
+        `[PRODUCTS_POST] No sizeId provided, using default: ${finalSizeId}`
+      );
+    }
+
+    // --- Create Product with potentially defaulted IDs ---
     const product = await prismadb.product.create({
       data: {
         name,
         price,
-        isFeatured,
-        isArchived,
+        // Use false for isFeatured/isArchived if not provided, aligning with generator base form logic
+        isFeatured: isFeatured === true, // Explicitly check for true
+        isArchived: isArchived === true, // Explicitly check for true
         categoryId,
-        colorId,
-        sizeId,
+        colorId: finalColorId, // Use determined color ID
+        sizeId: finalSizeId, // Use determined size ID
         storeId: storeId,
         images: {
           createMany: {

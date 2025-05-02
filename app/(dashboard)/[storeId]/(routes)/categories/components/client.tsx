@@ -44,9 +44,7 @@ export const CategoryClient: React.FC<CategoryClientProps> = ({ data }) => {
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
       />
-      <Heading title="API" description="API calls for Categories" />
-      <Separator />
-      <ApiList entityName="categories" entityIdName="categoryId" />
+      {/* API List removed, moved to API Settings page */}
     </>
   );
 };
