@@ -71,6 +71,43 @@ export async function PATCH(req: Request) {
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
+// GET handler to fetch current preferences
+export async function GET(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    // Ensure user is authenticated
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthenticated", { status: 401 });
+    }
+
+    // Fetch user preferences from the database
+    const user = await prismadb.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        darkMode: true,
+        emailNotifications: true,
+      },
+    });
+
+    if (!user) {
+      return new NextResponse("User not found", { status: 404 });
+    }
+
+    // Return the current preferences
+    // Provide defaults if values are null in the DB
+    const response = NextResponse.json({
+      darkMode: user.darkMode ?? false,
+      emailNotifications: user.emailNotifications ?? true,
+    });
+    // CORS headers handled by middleware
+    return response;
+  } catch (error) {
+    console.error("[ACCOUNT_PREFERENCES_GET]", error);
+    // CORS headers handled by middleware
+    return new NextResponse("Internal Server Error", { status: 500 });
+  }
+}
 
 // Optional: Add GET handler to fetch current preferences
 // export async function GET(req: Request) { ... }

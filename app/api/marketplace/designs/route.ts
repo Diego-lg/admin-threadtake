@@ -177,7 +177,7 @@ export async function GET(req: Request) {
           productId: product.id,
 
           // --- Product details (from derived product) ---
-          name: product.name,
+          name: `Custom Design by: ${design.user?.name ?? "Unknown Creator"}`, // Construct title
           price: product.price, // Ensure backend sends as number/string compatible with frontend
           productImage: product.images?.[0]?.url || "/placeholder.png",
 
