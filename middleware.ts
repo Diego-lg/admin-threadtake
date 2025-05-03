@@ -55,13 +55,6 @@ export async function middleware(req: NextRequest) {
   // --- Step 2: Handle Actual API Requests (GET, POST, etc.) ---
   // Add CORS headers to the outgoing response if origin is allowed
   if (isApiRoute && req.method !== "OPTIONS") {
-    // --- Specific Log for /api/designs ---
-    if (pathname === "/api/designs") {
-      console.log(
-        `[Middleware] Received ${req.method} request for /api/designs from origin: ${origin}`
-      );
-    }
-    // --- End Specific Log ---
     // --- DIAGNOSTIC: Try getToken early for my-designs ---
     if (pathname === "/api/designs/my-designs") {
       console.log(
