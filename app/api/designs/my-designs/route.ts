@@ -125,12 +125,12 @@ export async function GET(req: NextRequest) {
       include: {
         product: {
           select: {
-            id: true,
-            name: true,
-            images: {
-              select: { url: true },
-              take: 1,
-            },
+            id: true, // Keep product ID
+            name: true, // Keep product name
+            // images: { // <-- REMOVE nested image include for now
+            //   select: { url: true },
+            //   take: 1,
+            // },
           },
         },
         color: {
