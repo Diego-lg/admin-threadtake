@@ -88,10 +88,13 @@ export const authOptions: AuthOptions = {
         // Ensure secure is always true in production when sameSite is 'none'
         secure: process.env.NODE_ENV === "production",
         // Set domain to the parent domain for production to allow sharing across subdomains
-        // e.g., www.threadtake.com and admin-threadtake.vercel.app (if under .threadtake.com)
-        // Ensure the leading dot is present.
-        domain:
-          process.env.NODE_ENV === "production" ? ".threadtake.com" : undefined,
+        // e.g., www.threadtake.com and admin-threadtake.vercel.app
+        // REMOVED explicit domain setting for production. Let browser default to the host setting the cookie.
+        // This is generally safer unless you specifically need cross-subdomain access on the *same parent domain*.
+        // Since admin-threadtake.vercel.app and www.threadtake.com are likely different sites,
+        // relying on CORS and `credentials: 'include'` on the frontend fetch is the standard approach.
+        domain: undefined, // Let the browser handle the domain based on the host.
+        // domain: process.env.NODE_ENV === "production" ? ".threadtake.com" : undefined, // Revert to this if needed for specific cross-subdomain scenarios under .threadtake.com
       },
     },
     // Add configurations for other cookies (callbackUrl, csrfToken) if needed,
