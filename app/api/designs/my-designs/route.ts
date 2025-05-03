@@ -86,66 +86,64 @@ export async function GET(req: NextRequest) {
     console.log("[MY_DESIGNS_GET] Preparing to execute concurrent queries...");
     console.time("[MY_DESIGNS_GET] Prisma Concurrent Queries");
 
-    const [userData, generalSettings, totalDesigns, designs] =
-      await Promise.all([
-        // Fetch user to get their specific limit
-        prismadb.user.findUnique({
-          where: { id: userId },
-          select: { maxSavedDesigns: true },
-        }),
-        // Fetch general settings for the default limit (assuming one settings entry)
-        prismadb.generalSetting.findFirst({
-          select: { defaultMaxSavedDesigns: true },
-        }),
-        // Count total designs for the user
-        prismadb.savedDesign.count({
-          where: { userId: userId },
-        }),
-        // Fetch paginated designs
-        prismadb.savedDesign.findMany({
-          skip: skip,
-          take: limit,
-          where: {
-            userId: userId,
-          },
-          orderBy: {
-            updatedAt: "desc",
-          },
-          // Use include to fetch related data needed by the frontend
-          include: {
-            product: {
-              select: {
-                // Select only necessary fields from product
-                id: true,
-                name: true,
-                images: {
-                  // Include product images
-                  select: { url: true },
-                  take: 1, // Only need one image for preview
-                },
-              },
+    console.time("[MY_DESIGNS_GET] Prisma Sequential Queries");
+
+    // Fetch data sequentially to reduce connection pressure
+    console.log("[MY_DESIGNS_GET] Fetching user data...");
+    const userData = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { maxSavedDesigns: true },
+    });
+
+    console.log("[MY_DESIGNS_GET] Fetching general settings...");
+    const generalSettings = await prismadb.generalSetting.findFirst({
+      select: { defaultMaxSavedDesigns: true },
+    });
+
+    console.log("[MY_DESIGNS_GET] Counting total designs...");
+    const totalDesigns = await prismadb.savedDesign.count({
+      where: { userId: userId },
+    });
+
+    console.log("[MY_DESIGNS_GET] Fetching paginated designs...");
+    const designs = await prismadb.savedDesign.findMany({
+      skip: skip,
+      take: limit,
+      where: {
+        userId: userId,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            images: {
+              select: { url: true },
+              take: 1,
             },
-            color: {
-              select: {
-                // Select only necessary fields from color
-                id: true,
-                name: true,
-                value: true,
-              },
-            },
-            size: {
-              select: {
-                // Select only necessary fields from size
-                id: true,
-                name: true,
-                value: true,
-              },
-            },
-            // Add other relations if needed by SavedDesignData type
           },
-        }), // Correctly close findMany here
-      ]); // Close Promise.all array
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Concurrent Queries");
+        },
+        color: {
+          select: {
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
+        size: {
+          select: {
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
+      },
+    });
+
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries");
 
     // Determine the effective design limit
     const userLimit = userData?.maxSavedDesigns;
