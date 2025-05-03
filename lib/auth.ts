@@ -87,15 +87,11 @@ export const authOptions: AuthOptions = {
         path: "/",
         // Ensure secure is always true in production when sameSite is 'none'
         secure: process.env.NODE_ENV === "production",
-        // Explicitly set the domain for production cookies based on NEXTAUTH_URL
-        // This helps ensure the browser sends the cookie correctly on requests to the backend API
-        // Removes http(s):// prefix if present
+        // Set domain to the parent domain for production to allow sharing across subdomains
+        // e.g., www.threadtake.com and admin-threadtake.vercel.app (if under .threadtake.com)
+        // Ensure the leading dot is present.
         domain:
-          process.env.NODE_ENV === "production"
-            ? process.env.NEXTAUTH_URL?.replace(/^https?:\/\//, "").split(
-                ":"
-              )[0] // Get domain part from NEXTAUTH_URL
-            : undefined,
+          process.env.NODE_ENV === "production" ? ".threadtake.com" : undefined,
       },
     },
     // Add configurations for other cookies (callbackUrl, csrfToken) if needed,
