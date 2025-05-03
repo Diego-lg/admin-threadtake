@@ -43,36 +43,35 @@ export async function GET(req: NextRequest) {
     console.log("[MY_DESIGNS_GET] Attempting to get token...");
     // Use getToken to extract JWT payload from cookie or Authorization header
     const token = await getToken({ req, secret }); // Pass the defined secret
-    // --- DETAILED TOKEN LOGGING ---
+    // --- SIMPLIFIED TOKEN LOGGING ---
     if (!token) {
-      console.error(
-        "[MY_DESIGNS_GET] getToken returned NULL. No token found in request or decryption failed."
-      );
+      console.error("[MY_DESIGNS_GET] Diagnosis: getToken returned NULL.");
     } else {
-      console.log(
-        "[MY_DESIGNS_GET] getToken returned a token object. Contents:",
-        JSON.stringify(token)
-      );
-      if (!token.id && !token.sub) {
-        console.error(
-          "[MY_DESIGNS_GET] Token object retrieved, but it lacks 'id' and 'sub' claims."
+      // Check for id or sub specifically
+      if (token.id) {
+        console.log(
+          `[MY_DESIGNS_GET] Diagnosis: Token found with ID: ${token.id}`
+        );
+      } else if (token.sub) {
+        console.log(
+          `[MY_DESIGNS_GET] Diagnosis: Token found with Sub: ${token.sub}`
         );
       } else {
-        console.log(
-          `[MY_DESIGNS_GET] Token contains ID: ${token.id}, Sub: ${token.sub}`
+        console.error(
+          "[MY_DESIGNS_GET] Diagnosis: Token found BUT lacks 'id' AND 'sub' claims."
         );
       }
     }
-    // --- END DETAILED TOKEN LOGGING ---
+    // --- END SIMPLIFIED TOKEN LOGGING ---
 
     // Check for token and 'sub' claim (standard JWT subject, usually user ID)
     // Or check for 'id' if you added that explicitly in the jwt callback
     const userIdFromToken = token?.id || token?.sub; // Prioritize 'id' if present
 
     if (!userIdFromToken) {
-      // The detailed logging above should explain why this condition is met.
+      // The simplified logging above should now clearly state the reason.
       console.error(
-        "[MY_DESIGNS_GET] Authentication failed: userIdFromToken is missing. Returning 401."
+        "[MY_DESIGNS_GET] Authentication failed: userIdFromToken is missing (check Diagnosis log above). Returning 401."
       );
       return new NextResponse("Unauthenticated", { status: 401 });
     }
