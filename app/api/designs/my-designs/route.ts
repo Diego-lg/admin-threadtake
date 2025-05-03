@@ -125,11 +125,10 @@ export async function GET(req: NextRequest) {
       where: {
         userId: userId,
       },
-      orderBy: {
-        updatedAt: "desc", // Keep orderBy for consistent ordering
-        // Optionally add a unique field like id for deterministic tie-breaking
-        // id: 'asc'
-      },
+      // orderBy: { // <-- Temporarily remove orderBy for diagnostics
+      //   updatedAt: "desc",
+      //   // id: 'asc'
+      // },
       include: {
         // Keep the optimized include (no nested images)
         product: {
