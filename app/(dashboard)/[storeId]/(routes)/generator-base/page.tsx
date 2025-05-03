@@ -39,19 +39,19 @@ const GeneratorBasePage = async ({
     },
   });
 
-  // Removed sizes fetching
-  // const sizes = await prismadb.size.findMany({
-  //   where: {
-  //     storeId: params.storeId,
-  //   },
-  // });
+  // Reinstated sizes fetching
+  const sizes = await prismadb.size.findMany({
+    where: {
+      storeId: params.storeId,
+    },
+  });
 
-  // Removed colors fetching
-  // const colors = await prismadb.color.findMany({
-  //   where: {
-  //     storeId: params.storeId,
-  //   },
-  // });
+  // Reinstated colors fetching
+  const colors = await prismadb.color.findMany({
+    where: {
+      storeId: params.storeId,
+    },
+  });
 
   // No need to format price here, the form component handles it in defaultValues
   // const initialData = product
@@ -67,8 +67,8 @@ const GeneratorBasePage = async ({
         {/* Pass the raw product data (or null) directly to the form component */}
         <GeneratorBaseForm
           categories={categories}
-          // colors prop removed
-          // sizes prop removed
+          colors={colors} // Reinstated colors prop
+          sizes={sizes} // Reinstated sizes prop
           initialData={product} // Pass the potentially existing product data (with Decimal price)
         />
       </div>

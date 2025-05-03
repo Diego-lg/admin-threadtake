@@ -21,7 +21,7 @@ export async function GET(
     return NextResponse.json(categories);
   } catch (error) {
     // Log any errors that occur during the process
-    console.log("[GLOBAL_CATEGORIES_GET]", error);
+    console.error("[GLOBAL_CATEGORIES_GET] Error fetching categories:", error); // Log the full error object
     // Return a generic internal error response
     return new NextResponse("Internal error", { status: 500 });
   }

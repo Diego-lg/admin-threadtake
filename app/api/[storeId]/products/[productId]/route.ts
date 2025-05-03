@@ -97,7 +97,8 @@ export async function PATCH(
       return new NextResponse("name is required", { status: 400 });
     }
     if (!images || !images.length) {
-      return new NextResponse("images arerequired", { status: 400 });
+      // Typo corrected: "arerequired" -> "are required"
+      return new NextResponse("images are required", { status: 400 });
     }
     if (!price) {
       return new NextResponse("price is required", { status: 400 });
@@ -106,7 +107,8 @@ export async function PATCH(
       return new NextResponse("categoryId is required", { status: 400 });
     }
     if (!colorId) {
-      return new NextResponse("imageUrl is required", { status: 400 });
+      // Corrected error message: "imageUrl is required" -> "colorId is required"
+      return new NextResponse("colorId is required", { status: 400 });
     }
     if (!sizeId) {
       return new NextResponse("sizeId is required", { status: 400 });

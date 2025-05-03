@@ -42,9 +42,9 @@ const formSchema = z.object({
     .min(1, "At least one image is required."), // Ensure at least one image
   price: z.coerce.number().min(1),
   categoryId: z.string().min(1),
-  // colorId removed from schema
-  // sizeId removed from schema
-  // isFeatured and isArchived removed from schema as they are not user-editable here
+  colorId: z.string().min(1), // Reinstated colorId
+  sizeId: z.string().min(1), // Reinstated sizeId
+  // isFeatured and isArchived are handled programmatically
 });
 
 type GeneratorBaseFormValues = z.infer<typeof formSchema>;
@@ -56,15 +56,15 @@ interface GeneratorBaseFormProps {
       })
     | null;
   categories: Category[];
-  // colors prop removed
-  // sizes prop removed
+  colors: Color[]; // Reinstated colors prop
+  sizes: Size[]; // Reinstated sizes prop
 }
 
 export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
   initialData,
   categories,
-  // colors prop removed
-  // sizes prop removed
+  colors, // Reinstated colors prop
+  sizes, // Reinstated sizes prop
 }) => {
   const params = useParams();
   const router = useRouter();
@@ -90,16 +90,17 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
           ...initialData,
           price: parseFloat(String(initialData?.price)),
           images: initialData.images || [], // Ensure images is always an array
-          // colorId removed from defaultValues
+          colorId: initialData.colorId, // Reinstated colorId
+          sizeId: initialData.sizeId, // Reinstated sizeId
         }
       : {
           name: "",
           images: [],
           price: 0,
           categoryId: "", // Ensure default categoryId is handled if needed
-          // colorId removed
-          // sizeId removed
-          // isFeatured and isArchived are not needed in default values
+          colorId: "", // Reinstated colorId
+          sizeId: "", // Reinstated sizeId
+          // isFeatured and isArchived are handled programmatically
         },
   });
 
@@ -246,9 +247,73 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
                 </FormItem>
               )}
             />
-            {/* Size FormField removed */}
-            {/* Color FormField removed */}
-            {/* Removed isFeatured and isArchived Checkboxes */}
+            {/* Reinstated Size FormField */}
+            <FormField
+              control={form.control}
+              name="sizeId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Size</FormLabel>
+                  <Select
+                    disabled={loading}
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          defaultValue={field.value}
+                          placeholder="Select a Size"
+                        ></SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {sizes.map((size) => (
+                        <SelectItem key={size.id} value={size.id}>
+                          {size.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/* Reinstated Color FormField */}
+            <FormField
+              control={form.control}
+              name="colorId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Color</FormLabel>
+                  <Select
+                    disabled={loading}
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          defaultValue={field.value}
+                          placeholder="Select a Color"
+                        ></SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {colors.map((color) => (
+                        <SelectItem key={color.id} value={color.id}>
+                          {color.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/* isFeatured and isArchived are handled programmatically */}
           </div>
 
           <Button disabled={loading} className="ml-auto" type="submit">
