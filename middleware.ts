@@ -55,6 +55,26 @@ export async function middleware(req: NextRequest) {
   // --- Step 2: Handle Actual API Requests (GET, POST, etc.) ---
   // Add CORS headers to the outgoing response if origin is allowed
   if (isApiRoute && req.method !== "OPTIONS") {
+    // --- DIAGNOSTIC: Try getToken early for my-designs ---
+    if (pathname === "/api/designs/my-designs") {
+      console.log(
+        "[Middleware] Attempting diagnostic getToken for /api/designs/my-designs..."
+      );
+      try {
+        const diagnosticToken = await getToken({ req, secret });
+        if (diagnosticToken) {
+          console.log(
+            `[Middleware] Diagnostic getToken SUCCESSFUL. Token ID: ${diagnosticToken.id}, Sub: ${diagnosticToken.sub}`
+          );
+        } else {
+          console.error("[Middleware] Diagnostic getToken returned NULL.");
+        }
+      } catch (err) {
+        console.error("[Middleware] Error during diagnostic getToken:", err);
+      }
+    }
+    // --- END DIAGNOSTIC ---
+
     // Let the request proceed to the API route handler and await its response
     const response = await NextResponse.next();
 

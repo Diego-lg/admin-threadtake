@@ -9,6 +9,7 @@ import prismadb from "@/lib/prismadb";
 const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
 
 export async function GET(req: NextRequest) {
+  console.log("--- [MY_DESIGNS_GET] Handler Entered ---"); // <-- ADD THIS LOG
   const { searchParams } = new URL(req.url);
   const page = parseInt(searchParams.get("page") || "1", 10);
   const limit = parseInt(searchParams.get("limit") || "20", 10);
