@@ -6,15 +6,6 @@ declare global {
 }
 /* eslint-enable no-var */
 
-// --- TEMPORARY DEBUG LOGGING ---
-// Log the FULL DATABASE_URL being used at runtime in Vercel
-// REMOVE THIS LATER FOR SECURITY
-console.log(
-  "[Backend Prisma Init - DEBUG] Full DATABASE_URL:",
-  process.env.DATABASE_URL || "DATABASE_URL Env Var Not Set!"
-);
-// --- END TEMPORARY DEBUG LOGGING ---
-
 const prismadb =
   globalThis.prisma ||
   new PrismaClient({

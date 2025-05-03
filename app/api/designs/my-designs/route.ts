@@ -90,22 +90,29 @@ export async function GET(req: NextRequest) {
 
     // Fetch data sequentially to reduce connection pressure
     console.log("[MY_DESIGNS_GET] Fetching user data...");
+    console.time("[MY_DESIGNS_GET] Prisma User Query"); // <-- ADD TIME START
     const userData = await prismadb.user.findUnique({
       where: { id: userId },
       select: { maxSavedDesigns: true },
     });
+    console.timeEnd("[MY_DESIGNS_GET] Prisma User Query"); // <-- ADD TIME END
 
     console.log("[MY_DESIGNS_GET] Fetching general settings...");
+    console.time("[MY_DESIGNS_GET] Prisma Settings Query"); // <-- ADD TIME START
     const generalSettings = await prismadb.generalSetting.findFirst({
       select: { defaultMaxSavedDesigns: true },
     });
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Settings Query"); // <-- ADD TIME END
 
     console.log("[MY_DESIGNS_GET] Counting total designs...");
+    console.time("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME START
     const totalDesigns = await prismadb.savedDesign.count({
       where: { userId: userId },
     });
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME END
 
     console.log("[MY_DESIGNS_GET] Fetching paginated designs...");
+    console.time("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME START
     const designs = await prismadb.savedDesign.findMany({
       skip: skip,
       take: limit,
@@ -142,8 +149,8 @@ export async function GET(req: NextRequest) {
         },
       },
     });
-
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries");
+    console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME END
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // <-- ADD MISSING TIME END
 
     // Determine the effective design limit
     const userLimit = userData?.maxSavedDesigns;
