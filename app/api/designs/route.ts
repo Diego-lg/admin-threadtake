@@ -279,3 +279,6 @@ export async function GET(req: Request) {
     return new NextResponse("Internal Error", { status: 500 });
   }
 }
+
+// Configuration removed to resolve build error.
+// Body size limits on Vercel are typically handled by platform limits or vercel.json.

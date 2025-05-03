@@ -55,28 +55,28 @@ export async function middleware(req: NextRequest) {
   // --- Step 2: Handle Actual API Requests (GET, POST, etc.) ---
   // Add CORS headers to the outgoing response if origin is allowed
   if (isApiRoute && req.method !== "OPTIONS") {
-    const response = NextResponse.next(); // Let request proceed to the API route handler
+    // Let the request proceed to the API route handler and await its response
+    const response = await NextResponse.next();
 
-    // Add CORS headers to the *final* response by modifying the response object
-    // Note: Modifying headers on NextResponse.next() is complex.
-    // A common pattern is to set request headers to pass info downstream,
-    // or handle final response headers within the API route itself.
-    // However, for basic Allow-Origin, adding it here might suffice.
-    if (isAllowedOrigin) {
-      response.headers.set("Access-Control-Allow-Origin", origin);
-      response.headers.set("Access-Control-Allow-Credentials", "true");
+    // Check if origin is allowed and add headers to the final response
+    if (isAllowedOrigin && response && origin) {
+      // Clone the response to safely modify headers
+      const newResponse = new NextResponse(response.body, response);
+      newResponse.headers.set("Access-Control-Allow-Origin", origin);
+      newResponse.headers.set("Access-Control-Allow-Credentials", "true");
       console.log(
-        `[Middleware] Added CORS headers for actual request to ${pathname} from origin: ${origin}`
+        `[Middleware] Added CORS headers to final response for ${pathname} from origin: ${origin}`
       );
-    } else {
-      if (origin)
-        console.warn(
-          `[Middleware] Blocked API request (${req.method}) to ${pathname} from origin: ${origin}`
-        );
-      // Consider if you want to block the request here entirely if origin is not allowed
+      return newResponse; // Return the modified response
+    } else if (!isAllowedOrigin && origin) {
+      console.warn(
+        `[Middleware] Blocked API request (${req.method}) to ${pathname} from origin: ${origin}`
+      );
+      // Optionally return a 403 Forbidden here if needed for non-allowed origins
       // return new NextResponse("Forbidden: Invalid Origin", { status: 403 });
     }
-    return response; // Continue to the API route
+    // Return the original response if origin wasn't allowed or response object is missing
+    return response;
   }
 
   // --- Step 3: Authentication/Authorization Handling for NON-API routes ---
