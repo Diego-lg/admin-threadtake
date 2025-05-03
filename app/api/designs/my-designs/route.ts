@@ -122,34 +122,30 @@ export async function GET(req: NextRequest) {
       orderBy: {
         updatedAt: "desc",
       },
-      include: {
-        product: {
-          select: {
-            id: true, // Keep product ID
-            name: true, // Keep product name
-            // images: { // <-- REMOVE nested image include for now
-            //   select: { url: true },
-            //   take: 1,
-            // },
-          },
-        },
-        color: {
-          select: {
-            id: true,
-            name: true,
-            value: true,
-          },
-        },
-        size: {
-          select: {
-            id: true,
-            name: true,
-            value: true,
-          },
-        },
-      },
+      // include: { // <-- REMOVE ENTIRE INCLUDE BLOCK FOR DIAGNOSTICS
+      //   product: {
+      //     select: {
+      //       id: true,
+      //       name: true,
+      //     },
+      //   },
+      //   color: {
+      //     select: {
+      //       id: true,
+      //       name: true,
+      //       value: true,
+      //     },
+      //   },
+      //   size: {
+      //     select: {
+      //       id: true,
+      //       name: true,
+      //       value: true,
+      //     },
+      //   },
+      // },
     });
-    console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME END
+    console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query");
     console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // <-- ADD MISSING TIME END
 
     // Determine the effective design limit
