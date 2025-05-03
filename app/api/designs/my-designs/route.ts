@@ -11,9 +11,12 @@ const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
 export async function GET(req: NextRequest) {
   console.log("--- [MY_DESIGNS_GET] Handler Entered ---"); // <-- ADD THIS LOG
   const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = parseInt(searchParams.get("limit") || "20", 10);
-  const skip = (page - 1) * limit;
+  // --- Cursor Pagination ---
+  const cursor = searchParams.get("cursor") || undefined; // Get cursor from query params
+  const limit = parseInt(searchParams.get("limit") || "20", 10); // Keep limit
+  // const page = parseInt(searchParams.get("page") || "1", 10); // Page no longer needed
+  // const skip = (page - 1) * limit; // Skip no longer needed
+  // --- End Cursor Pagination ---
 
   // Change type to NextRequest
   // --- DEBUGGING VERCEL AUTH ---
@@ -84,7 +87,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch user data, settings, total count, and paginated designs concurrently
     console.log("[MY_DESIGNS_GET] Preparing to execute concurrent queries...");
-    console.time("[MY_DESIGNS_GET] Prisma Concurrent Queries");
+    console.time("[MY_DESIGNS_GET] Prisma Concurrent Queries"); // Note: This might still cause a warning if not ended properly
 
     console.time("[MY_DESIGNS_GET] Prisma Sequential Queries");
 
@@ -112,32 +115,47 @@ export async function GET(req: NextRequest) {
     console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME END
     console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`); // Log the count
 
-    // --- DIAGNOSTIC: Return only the count ---
-    console.log(
-      "[MY_DESIGNS_GET] DIAGNOSTIC: Returning only count to test speed."
-    );
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // End sequential timer here for diagnostic
-    return NextResponse.json({
-      message: "Diagnostic: Count query test.",
-      totalDesigns: totalDesigns,
-    });
-    // --- END DIAGNOSTIC ---
-
-    /* --- Original code commented out for diagnostic ---
     console.log("[MY_DESIGNS_GET] Fetching paginated designs...");
-    console.time("[MY_DESIGNS_GET] Prisma FindMany Query");
+    console.time("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME START
     const designs = await prismadb.savedDesign.findMany({
-      skip: skip,
-      take: limit,
+      // skip: skip, // Remove skip
+      take: limit, // Keep take
+      cursor: cursor ? { id: cursor } : undefined, // Use cursor if provided
+      skip: cursor ? 1 : 0, // Skip the cursor itself if it exists
       where: {
         userId: userId,
       },
       orderBy: {
-        updatedAt: "desc",
+        updatedAt: "desc", // Keep orderBy for consistent ordering
+        // Optionally add a unique field like id for deterministic tie-breaking
+        // id: 'asc'
+      },
+      include: {
+        // Keep the optimized include (no nested images)
+        product: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        color: {
+          select: {
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
+        size: {
+          select: {
+            id: true,
+            name: true,
+            value: true,
+          },
+        },
       },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query");
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries");
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // <-- ADD MISSING TIME END
 
     // Determine the effective design limit
     const userLimit = userData?.maxSavedDesigns;
@@ -151,18 +169,27 @@ export async function GET(req: NextRequest) {
     );
     console.log(`[MY_DESIGNS_GET] Effective Limit: ${effectiveLimit}`);
     console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`);
+    // Update log message for cursor pagination
     console.log(
-      `[MY_DESIGNS_GET] Fetched Designs Count (page ${page}): ${designs.length}`
+      `[MY_DESIGNS_GET] Fetched Designs Count (limit ${limit}, cursor ${cursor}): ${designs.length}`
     );
 
-    // Return designs, pagination info, total count, and the effective limit
+    // --- Cursor Pagination: Determine next cursor ---
+    let nextCursor: string | undefined = undefined;
+    if (designs.length === limit) {
+      // If we fetched a full page, there might be more
+      nextCursor = designs[designs.length - 1].id; // Use the ID of the last item as the next cursor
+    }
+    // --- End Cursor Pagination ---
+
+    // Return designs, pagination info (nextCursor), total count, and the effective limit
     return NextResponse.json({
       designs: designs,
-      currentPage: page,
-      totalDesigns: totalDesigns,
-      limit: effectiveLimit,
+      // currentPage: page, // Remove currentPage
+      nextCursor: nextCursor, // Add nextCursor
+      totalDesigns: totalDesigns, // Keep totalDesigns (from count query)
+      limit: effectiveLimit, // Use 'limit' to represent the max allowed
     });
-    */
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
     return new NextResponse("Internal error", { status: 500 });
