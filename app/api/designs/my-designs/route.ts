@@ -110,9 +110,22 @@ export async function GET(req: NextRequest) {
       where: { userId: userId },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME END
+    console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`); // Log the count
 
+    // --- DIAGNOSTIC: Return only the count ---
+    console.log(
+      "[MY_DESIGNS_GET] DIAGNOSTIC: Returning only count to test speed."
+    );
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // End sequential timer here for diagnostic
+    return NextResponse.json({
+      message: "Diagnostic: Count query test.",
+      totalDesigns: totalDesigns,
+    });
+    // --- END DIAGNOSTIC ---
+
+    /* --- Original code commented out for diagnostic ---
     console.log("[MY_DESIGNS_GET] Fetching paginated designs...");
-    console.time("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME START
+    console.time("[MY_DESIGNS_GET] Prisma FindMany Query");
     const designs = await prismadb.savedDesign.findMany({
       skip: skip,
       take: limit,
@@ -122,31 +135,9 @@ export async function GET(req: NextRequest) {
       orderBy: {
         updatedAt: "desc",
       },
-      // include: { // <-- REMOVE ENTIRE INCLUDE BLOCK FOR DIAGNOSTICS
-      //   product: {
-      //     select: {
-      //       id: true,
-      //       name: true,
-      //     },
-      //   },
-      //   color: {
-      //     select: {
-      //       id: true,
-      //       name: true,
-      //       value: true,
-      //     },
-      //   },
-      //   size: {
-      //     select: {
-      //       id: true,
-      //       name: true,
-      //       value: true,
-      //     },
-      //   },
-      // },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query");
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // <-- ADD MISSING TIME END
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries");
 
     // Determine the effective design limit
     const userLimit = userData?.maxSavedDesigns;
@@ -169,8 +160,9 @@ export async function GET(req: NextRequest) {
       designs: designs,
       currentPage: page,
       totalDesigns: totalDesigns,
-      limit: effectiveLimit, // Use 'limit' to represent the max allowed
+      limit: effectiveLimit,
     });
+    */
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
     return new NextResponse("Internal error", { status: 500 });
