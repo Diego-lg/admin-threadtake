@@ -9,7 +9,7 @@ import prismadb from "@/lib/prismadb";
 const secret = process.env.NEXTAUTH_SECRET; // Secret needed for getToken
 
 export async function GET(req: NextRequest) {
-  console.log("--- [MY_DESIGNS_GET] Handler Entered ---"); // <-- ADD THIS LOG
+  console.log("--- [MY_DESIGNS_GET] Handler Entered ---");
   const { searchParams } = new URL(req.url);
   // --- Cursor Pagination ---
   const cursor = searchParams.get("cursor") || undefined; // Get cursor from query params
@@ -85,80 +85,65 @@ export async function GET(req: NextRequest) {
     );
     const userId = userIdFromToken as string; // Use the ID from the token
 
-    // Fetch user data, settings, total count, and paginated designs concurrently
-    console.log("[MY_DESIGNS_GET] Preparing to execute concurrent queries...");
-    console.time("[MY_DESIGNS_GET] Prisma Concurrent Queries"); // Note: This might still cause a warning if not ended properly
+    // --- Fetch initial data concurrently ---
+    console.log("[MY_DESIGNS_GET] Preparing initial concurrent queries...");
+    console.time("[MY_DESIGNS_GET] Prisma Initial Concurrent Queries");
 
-    console.time("[MY_DESIGNS_GET] Prisma Sequential Queries");
-
-    // Fetch data sequentially to reduce connection pressure
-    console.log("[MY_DESIGNS_GET] Fetching user data...");
-    console.time("[MY_DESIGNS_GET] Prisma User Query"); // <-- ADD TIME START
-    const userData = await prismadb.user.findUnique({
+    const userPromise = prismadb.user.findUnique({
       where: { id: userId },
       select: { maxSavedDesigns: true },
     });
-    console.timeEnd("[MY_DESIGNS_GET] Prisma User Query"); // <-- ADD TIME END
 
-    console.log("[MY_DESIGNS_GET] Fetching general settings...");
-    console.time("[MY_DESIGNS_GET] Prisma Settings Query"); // <-- ADD TIME START
-    const generalSettings = await prismadb.generalSetting.findFirst({
+    const settingsPromise = prismadb.generalSetting.findFirst({
       select: { defaultMaxSavedDesigns: true },
     });
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Settings Query"); // <-- ADD TIME END
 
-    console.log("[MY_DESIGNS_GET] Counting total designs...");
-    console.time("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME START
-    const totalDesigns = await prismadb.savedDesign.count({
+    const countPromise = prismadb.savedDesign.count({
       where: { userId: userId },
     });
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Count Query"); // <-- ADD TIME END
-    console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`); // Log the count
+
+    // Execute concurrently
+    const [userData, generalSettings, totalDesigns] = await Promise.all([
+      userPromise,
+      settingsPromise,
+      countPromise,
+    ]);
+
+    console.timeEnd("[MY_DESIGNS_GET] Prisma Initial Concurrent Queries");
+    console.log(
+      `[MY_DESIGNS_GET] Fetched User Data: ${JSON.stringify(userData)}`
+    );
+    console.log(
+      `[MY_DESIGNS_GET] Fetched Settings: ${JSON.stringify(generalSettings)}`
+    );
+    console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`);
+    // --- End Concurrent Fetch ---
 
     console.log("[MY_DESIGNS_GET] Fetching paginated designs...");
-    console.time("[MY_DESIGNS_GET] Prisma FindMany Query"); // <-- ADD TIME START
+    console.time("[MY_DESIGNS_GET] Prisma FindMany Query");
     const designs = await prismadb.savedDesign.findMany({
-      // skip: skip, // Remove skip
-      take: limit, // Keep take
-      cursor: cursor ? { id: cursor } : undefined, // Use cursor if provided
-      skip: cursor ? 1 : 0, // Skip the cursor itself if it exists
+      take: limit,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
       where: {
         userId: userId,
       },
-      // orderBy: { // <-- Temporarily remove orderBy for diagnostics
-      //   updatedAt: "desc",
-      //   // id: 'asc'
-      // },
+      orderBy: {
+        updatedAt: "desc",
+        // id: 'asc' // Optional secondary sort
+      },
       include: {
         // Keep the optimized include (no nested images)
-        product: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        color: {
-          select: {
-            id: true,
-            name: true,
-            value: true,
-          },
-        },
-        size: {
-          select: {
-            id: true,
-            name: true,
-            value: true,
-          },
-        },
+        product: { select: { id: true, name: true } },
+        color: { select: { id: true, name: true, value: true } },
+        size: { select: { id: true, name: true, value: true } },
       },
     });
     console.timeEnd("[MY_DESIGNS_GET] Prisma FindMany Query");
-    console.timeEnd("[MY_DESIGNS_GET] Prisma Sequential Queries"); // <-- ADD MISSING TIME END
 
     // Determine the effective design limit
     const userLimit = userData?.maxSavedDesigns;
-    const defaultLimit = generalSettings?.defaultMaxSavedDesigns ?? 10; // Fallback default
+    const defaultLimit = generalSettings?.defaultMaxSavedDesigns ?? 10;
     const effectiveLimit = userLimit ?? defaultLimit;
 
     console.log(`[MY_DESIGNS_GET] User ID: ${userId}`);
@@ -168,7 +153,6 @@ export async function GET(req: NextRequest) {
     );
     console.log(`[MY_DESIGNS_GET] Effective Limit: ${effectiveLimit}`);
     console.log(`[MY_DESIGNS_GET] Total Designs Count: ${totalDesigns}`);
-    // Update log message for cursor pagination
     console.log(
       `[MY_DESIGNS_GET] Fetched Designs Count (limit ${limit}, cursor ${cursor}): ${designs.length}`
     );
@@ -176,18 +160,16 @@ export async function GET(req: NextRequest) {
     // --- Cursor Pagination: Determine next cursor ---
     let nextCursor: string | undefined = undefined;
     if (designs.length === limit) {
-      // If we fetched a full page, there might be more
-      nextCursor = designs[designs.length - 1].id; // Use the ID of the last item as the next cursor
+      nextCursor = designs[designs.length - 1].id;
     }
     // --- End Cursor Pagination ---
 
     // Return designs, pagination info (nextCursor), total count, and the effective limit
     return NextResponse.json({
       designs: designs,
-      // currentPage: page, // Remove currentPage
-      nextCursor: nextCursor, // Add nextCursor
-      totalDesigns: totalDesigns, // Keep totalDesigns (from count query)
-      limit: effectiveLimit, // Use 'limit' to represent the max allowed
+      nextCursor: nextCursor,
+      totalDesigns: totalDesigns,
+      limit: effectiveLimit,
     });
   } catch (error) {
     console.error("[MY_DESIGNS_GET]", error);
