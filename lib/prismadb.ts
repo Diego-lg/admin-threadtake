@@ -14,7 +14,13 @@ console.log(
     : "Not Set"
 ); // Log only the end of the URL for security
 
-const prismadb = globalThis.prisma || new PrismaClient();
+const prismadb =
+  globalThis.prisma ||
+  new PrismaClient({
+    // Optional: Add logs here if needed
+    // log: ['query', 'info', 'warn', 'error'],
+  });
+
 if (process.env.NODE_ENV !== "production") globalThis.prisma = prismadb;
 
 export default prismadb;
