@@ -1,6 +1,8 @@
 // backend_threadtake/app/api/users/[userId]/settings/route.ts
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server"; // Assuming Clerk for admin auth
+// Removed Clerk import: import { auth } from "@clerk/nextjs/server";
+import { getServerSession } from "next-auth/next"; // Import getServerSession
+import { authOptions } from "@/lib/auth"; // Import your authOptions
 
 import prismadb from "@/lib/prismadb";
 import { UserRole } from "@prisma/client";
@@ -12,11 +14,17 @@ export async function PATCH(
 ) {
   try {
     // --- Admin Authentication Check ---
-    const { userId: adminUserId, sessionClaims } = auth(); // Rename to avoid conflict with params.userId
+    const session = await getServerSession(authOptions); // Use getServerSession
 
-    if (!adminUserId || sessionClaims?.metadata?.role !== UserRole.ADMIN) {
+    // Access user data from the session object
+    const adminUserId = session?.user?.id;
+    const adminUserRole = session?.user?.role;
+
+    if (!adminUserId || adminUserRole !== UserRole.ADMIN) {
       console.warn(
-        `[USER_SETTINGS_PATCH] Unauthorized attempt by userId: ${adminUserId}`
+        `[USER_SETTINGS_PATCH] Unauthorized attempt by userId: ${
+          adminUserId ?? "unknown"
+        }` // Use adminUserId from session
       );
       return new NextResponse("Unauthorized: Admin privileges required", {
         status: 403,
