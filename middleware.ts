@@ -60,6 +60,12 @@ export async function middleware(req: NextRequest) {
       console.log(
         "[Middleware] Attempting diagnostic getToken for /api/designs/my-designs..."
       );
+      // --- Log raw cookie header seen by middleware ---
+      const rawCookieHeader = req.headers.get("cookie");
+      console.log(
+        `[Middleware] Raw Cookie Header: ${rawCookieHeader || "NONE"}`
+      );
+      // --- End log raw cookie header ---
       try {
         const diagnosticToken = await getToken({ req, secret });
         if (diagnosticToken) {

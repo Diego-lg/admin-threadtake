@@ -75,10 +75,9 @@ export const authOptions: AuthOptions = {
   cookies: {
     sessionToken: {
       // Conditionally set cookie name based on environment for Secure prefix
-      // TEMPORARY DIAGNOSTIC: Remove __Secure- prefix to test if it interferes with getToken
       name:
         process.env.NODE_ENV === "production"
-          ? `next-auth.session-token` // Removed __Secure- prefix
+          ? `__Secure-next-auth.session-token` // Restored __Secure- prefix
           : `next-auth.session-token`,
       options: {
         httpOnly: true,
