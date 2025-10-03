@@ -6,6 +6,12 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
         hostname: "pub-167bcbb6797c48d686d7dacfba94f17f.r2.dev", // Your R2 public hostname
         port: "",
         pathname: "/**", // Allow any path on this hostname

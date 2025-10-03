@@ -1,6 +1,7 @@
 import { AuthOptions } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcrypt";
 
 import prismadb from "@/lib/prismadb"; // Assuming prismadb is exported from here
@@ -10,6 +11,10 @@ import { User, UserRole } from "@prisma/client";
 export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prismadb),
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -110,53 +115,50 @@ export const authOptions: AuthOptions = {
       console.log(
         "[NextAuth JWT Callback] START - Incoming Token:",
         JSON.stringify(token)
-      ); // DEBUG LOG
+      );
       console.log(
         "[NextAuth JWT Callback] START - User object (only present on login):",
         user ? user.id : "N/A"
-      ); // DEBUG LOG
-      console.log("[NextAuth JWT Callback] START - Trigger:", trigger); // DEBUG LOG
+      );
+      console.log("[NextAuth JWT Callback] START - Trigger:", trigger);
       console.log(
         "[NextAuth JWT Callback] START - Session object (only present on update):",
         session ? Object.keys(session) : "N/A"
-      ); // DEBUG LOG
-      // On initial sign in, populate token with id and role
-      if (user) {
-        // This block runs only on initial sign-in
-        token.id = user.id;
-        token.role = user.role;
-        // Add all necessary fields from the User object to the token at login
-        token.name = user.name;
-        token.image = user.image;
-        // Ensure custom fields from Prisma model are included if available on the User object
-        // The 'user' object here comes from the 'authorize' callback or the adapter
-        // We need to cast 'user' if these fields aren't on the default NextAuth User type
-        const prismaUser = user as User; // Cast to access potential custom fields
-        token.profileCardBackground = prismaUser.profileCardBackground;
-        token.bio = prismaUser.bio;
-        token.portfolioUrl = prismaUser.portfolioUrl;
+      );
 
-        // Explicitly add the JWT token string to the token object
-        // This is the token that will be passed to the session callback
-        // Note: NextAuth handles the actual signing/encryption of the JWT
-        // The 'token' object here represents the payload that will be signed
-        // We are adding a property to this payload.
-        // The actual JWT string is not directly available here in a simple way.
-        // Let's adjust the approach: we need to add the *claims* to the token,
-        // and NextAuth will generate the JWT. The session callback then gets this token.
-        // We don't need to manually add the JWT string itself here.
-        // The issue is likely accessing the *claims* from the session object on the frontend.
-        // Let's ensure the session object gets the necessary claims.
+      // On initial sign in, `user` object is present.
+      if (user) {
+        // Find the user in the database. The adapter should have already created it.
+        const dbUser = await prismadb.user.findUnique({
+          where: { email: user.email! },
+        });
+
+        // If the user is found in the database, use their DB ID (CUID) in the token.
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role;
+          token.name = dbUser.name;
+          token.image = dbUser.image;
+          token.profileCardBackground = dbUser.profileCardBackground;
+          token.bio = dbUser.bio;
+          token.portfolioUrl = dbUser.portfolioUrl;
+        } else {
+          // This case should ideally not happen if the adapter is working correctly.
+          // Fallback to the ID from the provider, but log a warning.
+          token.id = user.id;
+          console.warn(
+            `[NextAuth JWT Callback] Warning: User with email ${user.email} not found in DB during JWT creation. Using provider ID.`
+          );
+        }
       }
 
-      // Handle session updates triggered by the update() function
+      // Handle session updates triggered by the client-side `update()` function
       if (trigger === "update" && session) {
         console.log(
           "[NextAuth JWT Callback] Update trigger detected. Session data:",
           session
-        ); // DEBUG LOG
+        );
         // Merge the session data passed from update() into the token
-        // Ensure only allowed fields are updated for security if needed
         if (session.profileCardBackground !== undefined) {
           token.profileCardBackground = session.profileCardBackground;
         }
@@ -172,17 +174,13 @@ export const authOptions: AuthOptions = {
         if (session.portfolioUrl !== undefined) {
           token.portfolioUrl = session.portfolioUrl;
         }
-        // Add other fields from session update as needed
       }
-
-      // Removed the block that always fetches from DB within JWT callback.
-      // The session callback already handles fetching fresh data based on the token.
 
       console.log(
         "[NextAuth JWT Callback] END - Returning Token:",
         JSON.stringify(token)
-      ); // DEBUG LOG
-      return token; // Return the updated token
+      );
+      return token; // Return the token with the correct database ID
     },
     async session({ session, token }) {
       console.log(
