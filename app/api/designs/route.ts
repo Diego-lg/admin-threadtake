@@ -130,6 +130,23 @@ export async function POST(req: Request) {
       // --- End Phase 3 Field ---
     } = body;
 
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5001";
+    const r2Url =
+      process.env.NEXT_PUBLIC_R2_URL ||
+      "https://pub-167bcbb6797c48d686d7dacfba94f17f.r2.dev";
+
+    const transformUrl = (url: string | null | undefined): string | null => {
+      if (!url) return null;
+      // Replace the local backend URL with the public R2 URL
+      return url.replace(backendUrl, r2Url);
+    };
+
+    const finalDesignImageUrl = transformUrl(designImageUrl);
+    const finalMockupImageUrl = transformUrl(mockupImageUrl);
+    const finalUploadedLogoUrl = transformUrl(uploadedLogoUrl);
+    const finalUploadedPatternUrl = transformUrl(uploadedPatternUrl);
+
     if (!productId || !colorId || !sizeId) {
       return new NextResponse(
         "Product ID, Color ID, and Size ID are required",
@@ -174,9 +191,9 @@ export async function POST(req: Request) {
         colorId,
         sizeId,
         customText: customText || null,
-        designImageUrl: designImageUrl || null,
-        uploadedLogoUrl: uploadedLogoUrl || null,
-        uploadedPatternUrl: uploadedPatternUrl || null,
+        designImageUrl: finalDesignImageUrl,
+        uploadedLogoUrl: finalUploadedLogoUrl,
+        uploadedPatternUrl: finalUploadedPatternUrl,
         // --- Save new configuration fields ---
         shirtColorHex: shirtColorHex || null,
         isLogoMode: isLogoMode, // Should be boolean, handle if null/undefined? Assume required for now.
@@ -194,7 +211,7 @@ export async function POST(req: Request) {
         // viewCount defaults to 0 in schema, no need to set here
         // --- End save Phase 1 Fields ---
         // --- Save Phase 2 Mockup Field ---
-        mockupImageUrl: mockupImageUrl || null,
+        mockupImageUrl: finalMockupImageUrl,
         // --- End save Phase 2 Field ---
         // --- Save Phase 3 Usage Rights ---
         usageRights: usageRights || null, // Save usage rights string

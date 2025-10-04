@@ -165,11 +165,36 @@ export async function GET(req: Request) {
     );
     // Optional: Log the raw products if needed for deep debugging (can be verbose)
     // console.log("[MARKETPLACE_PRODUCTS_GET] Raw Derived Products:", JSON.stringify(derivedProducts, null, 2));
+
+    // --- URL Transformation Logic ---
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5001";
+    const r2Url =
+      process.env.NEXT_PUBLIC_R2_URL ||
+      "https://pub-167bcbb6797c48d686d7dacfba94f17f.r2.dev";
+
+    const transformUrl = (url: string | null | undefined): string | null => {
+      if (!url) return null;
+      // If the URL is a local file path, replace the base with the public R2 URL
+      if (url.startsWith(backendUrl) || url.startsWith("http://127.0.0.1")) {
+        return url.replace(backendUrl, r2Url);
+      }
+      // Return the URL as-is if it's already a public URL (e.g., from Google, Cloudinary)
+      return url;
+    };
+    // --- End URL Transformation Logic ---
+
     // --- Map response using the precisely selected fields ---
     const responseData = derivedProducts
       .filter((product) => product.savedDesign) // Ensure savedDesign is linked
       .map((product) => {
         const design = product.savedDesign!; // Non-null assertion as we filtered
+
+        // Transform all relevant URLs
+        const transformedProductImage = transformUrl(product.images?.[0]?.url);
+        const transformedDesignImageUrl = transformUrl(design.designImageUrl);
+        const transformedMockupImageUrl = transformUrl(design.mockupImageUrl);
+        const transformedCreatorImage = transformUrl(design.user?.image);
         // Note: design.user, design.color, design.size now only contain selected fields
         return {
           // --- Key identifiers ---
@@ -179,11 +204,11 @@ export async function GET(req: Request) {
           // --- Product details (from derived product) ---
           name: `Custom Design by: ${design.user?.name ?? "Unknown Creator"}`, // Construct title
           price: product.price, // Ensure backend sends as number/string compatible with frontend
-          productImage: product.images?.[0]?.url || "/placeholder.png",
+          productImage: transformedProductImage || "/placeholder.png",
 
           // --- Design details (selected from savedDesign) ---
-          designImageUrl: design.designImageUrl,
-          mockupImageUrl: design.mockupImageUrl,
+          designImageUrl: transformedDesignImageUrl,
+          mockupImageUrl: transformedMockupImageUrl,
           customText: design.customText,
           description: design.description,
           tags: design.tags,
@@ -197,7 +222,7 @@ export async function GET(req: Request) {
                 // Contains selected { id, name, image }
                 id: design.user.id,
                 name: design.user.name,
-                image: design.user.image,
+                image: transformedCreatorImage,
               }
             : null,
 

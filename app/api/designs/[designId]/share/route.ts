@@ -1,19 +1,11 @@
-import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { updateSharingStatus } from "@/actions/saved-designs"; // Import the function
-import { UserRole } from "@prisma/client";
 
-// Define the expected shape of the JWT payload (matching other routes)
-interface JwtPayload {
-  userId: string;
-  email: string;
-  role: UserRole;
-  iat: number;
-  exp: number;
-}
+const secret = process.env.NEXTAUTH_SECRET;
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { designId: string } }
 ) {
   try {
@@ -21,60 +13,34 @@ export async function POST(
       `[API SHARE] Received POST request for design ${params.designId}`
     );
 
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
-        status: 401,
-      });
+    // 1. Check if NEXTAUTH_SECRET is defined
+    if (!secret) {
+      console.error("[API SHARE] Missing NEXTAUTH_SECRET environment variable");
+      return new NextResponse("Server configuration error", { status: 500 });
     }
 
-    // 2. Extract and Verify token (Ensure JWT_SECRET is set)
-    const token = authHeader.split(" ")[1];
-    let decodedPayload: JwtPayload;
-    try {
-      const jwtSecret = process.env.JWT_SECRET;
-      // Log the secret status and a few chars for verification (DO NOT log the full secret)
-      console.log(
-        `[API SHARE] JWT_SECRET Loaded: ${!!jwtSecret}, Starts with: ${
-          jwtSecret?.substring(0, 3) ?? "N/A"
-        }`
+    // 2. Get token using NextAuth's getToken (reads from cookie or Authorization header)
+    console.log("[API SHARE] Attempting to get NextAuth token...");
+    const token = await getToken({ req, secret });
+
+    if (!token) {
+      console.error(
+        "[API SHARE] Authentication failed: getToken returned NULL"
       );
-      if (!jwtSecret) {
-        console.error(
-          "[API SHARE] JWT_SECRET environment variable is missing!"
-        );
-        throw new Error("JWT_SECRET environment variable is not set!");
-      }
-      console.log("[API SHARE] Attempting to verify token:", token);
-      decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
-      console.log(
-        "[API SHARE] Token verified successfully. Payload:",
-        decodedPayload
-      );
-    } catch (error: unknown) {
-      // Catch specific error and log details if it's an Error instance
-      if (error instanceof Error) {
-        console.error("[API SHARE] JWT Verification Error Details:", {
-          message: error.message,
-          name: error.name,
-          // Potentially log other properties if needed, e.g., error.expiredAt for expiration errors
-        });
-      } else {
-        // Log the error if it's not a standard Error object
-        console.error(
-          "[API SHARE] JWT Verification Error (Unknown Type):",
-          error
-        );
-      }
-      return new NextResponse("Invalid or expired token", { status: 401 });
+      return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    // 3. Check User ID from token
-    const userId = decodedPayload.userId;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
+    // 3. Extract user ID from token
+    const userIdFromToken = token?.id || token?.sub;
+
+    if (!userIdFromToken) {
+      console.error(
+        "[API SHARE] Authentication failed: userIdFromToken is missing"
+      );
+      return new NextResponse("Unauthenticated", { status: 401 });
     }
+
+    const userId = userIdFromToken as string;
     console.log(`[API SHARE] Authenticated user: ${userId}`);
 
     // 4. Get designId from params
