@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Store {
@@ -16,7 +15,7 @@ model Store {
   billboards Billboard[] @relation("StoreToBillboard")
   categories Category[]  @relation("StoreToCategory")
   colors     Color[]     @relation("StoreToColor")
-  orders     Order[]     @relation("@StoreToOrder")
+  orders     Order[]     @relation("StoreToOrder")
   products   Product[]   @relation("StoreToProduct")
   salesGoals SalesGoal[]
   sizes      Size[]      @relation("StoreToSize")
@@ -126,7 +125,7 @@ model Order {
   address    String      @default("")
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
-  store      Store       @relation("@StoreToOrder", fields: [storeId], references: [id])
+  store      Store       @relation("StoreToOrder", fields: [storeId], references: [id])
   user       User?       @relation(fields: [userId], references: [id])
   orderItems OrderItem[]
 
