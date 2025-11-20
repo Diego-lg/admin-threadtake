@@ -13,6 +13,8 @@ import {
   Code, // Added Code icon for API link
   Store, // Added Store icon for Marketplace link
   Palette, // Using Palette icon for Generator Base
+  Droplets, // Added Droplets icon for Colors
+  Ruler, // Added Ruler icon for Sizes
 } from "lucide-react";
 
 interface SidebarProps {
@@ -89,6 +91,15 @@ const Sidebar = ({ params }: SidebarProps) => {
         >
           <Palette className="mr-3 h-5 w-5" /> {/* Using Palette icon */}
           {isExpanded && <span>Generator Base</span>}
+        </Link>
+        {/* Product Options Link */}
+        <Link
+          href={`/${storeId}/product-options`} // Link to product options page (colors & sizes)
+          className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <Shapes className="mr-3 h-5 w-5" />{" "}
+          {/* Using Shapes icon for combined options */}
+          {isExpanded && <span>Product Options</span>}
         </Link>
         {/* Categories Link */}
         <Link

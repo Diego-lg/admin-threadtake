@@ -31,6 +31,14 @@ const ApiSettingsPage = () => {
         <Separator />
         <ApiList entityName="products" entityIdName="productId" />
         {/* TODO: Add other relevant API endpoints (Billboards, Orders, etc.) */}
+        {/* Colors API List */}
+        <Heading title="Colors" description="API calls for Colors" />
+        <Separator />
+        <ApiList entityName="colors" entityIdName="colorId" />
+        {/* Sizes API List */}
+        <Heading title="Sizes" description="API calls for Sizes" />
+        <Separator />
+        <ApiList entityName="sizes" entityIdName="sizeId" />
       </div>
     </div>
   );

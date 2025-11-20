@@ -1,247 +1,317 @@
 import { NextResponse } from "next/server";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { randomUUID } from "crypto"; // For generating unique filenames
+import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth/next";
 import { UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { R2Config } from "@/lib/r2-config";
+import {
+  R2UserStorage,
+  UserFolderPaths,
+  UserFolderService,
+  AssetType,
+  ExportType,
+} from "@/lib/r2-user-storage";
 
-// Ensure environment variables are loaded and validated
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
-const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID; // Use correct env var name
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const R2_PUBLIC_BUCKET_URL = process.env.R2_PUBLIC_BUCKET_URL; // Use correct env var name
-
-if (
-  !R2_BUCKET_NAME ||
-  !CLOUDFLARE_ACCOUNT_ID || // Use correct env var name
-  !R2_ACCESS_KEY_ID ||
-  !R2_SECRET_ACCESS_KEY ||
-  !R2_PUBLIC_BUCKET_URL // Use correct env var name
-) {
-  console.error(
-    "CRITICAL: Missing Cloudflare R2 environment variables at startup!"
-  );
-  // Optionally throw an error during build or startup if preferred
-  // Log which ones are missing for easier debugging:
-  if (!R2_BUCKET_NAME) console.error("Missing: R2_BUCKET_NAME");
-  if (!CLOUDFLARE_ACCOUNT_ID) console.error("Missing: CLOUDFLARE_ACCOUNT_ID");
-  if (!R2_ACCESS_KEY_ID) console.error("Missing: R2_ACCESS_KEY_ID");
-  if (!R2_SECRET_ACCESS_KEY) console.error("Missing: R2_SECRET_ACCESS_KEY");
-  if (!R2_PUBLIC_BUCKET_URL) console.error("Missing: R2_PUBLIC_BUCKET_URL");
-} else {
-  console.log("R2 Environment variables seem present at startup."); // Added log
+/**
+ * Query parameters for listing files
+ */
+interface ListFilesQuery {
+  prefix?: string;
+  contentType?: "mockups" | "profile-pictures" | "assets" | "exports";
+  page?: string;
+  pageSize?: string;
+  userId?: string; // For admin access to other users' files
 }
 
-// Construct the R2 endpoint URL
-const R2_ENDPOINT = `https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-
-// Log values just before S3 client initialization
-console.log("[R2 Init] R2_BUCKET_NAME:", R2_BUCKET_NAME ? "Exists" : "MISSING");
-console.log(
-  "[R2 Init] CLOUDFLARE_ACCOUNT_ID:",
-  CLOUDFLARE_ACCOUNT_ID ? "Exists" : "MISSING"
-);
-console.log(
-  "[R2 Init] R2_ACCESS_KEY_ID:",
-  R2_ACCESS_KEY_ID ? "Exists" : "MISSING"
-);
-console.log(
-  "[R2 Init] R2_SECRET_ACCESS_KEY:",
-  R2_SECRET_ACCESS_KEY ? "Exists" : "MISSING"
-);
-console.log(
-  "[R2 Init] R2_PUBLIC_BUCKET_URL:",
-  R2_PUBLIC_BUCKET_URL ? "Exists" : "MISSING"
-);
-console.log("[R2 Init] R2_ENDPOINT:", R2_ENDPOINT);
-
-// Initialize S3 Client configured for Cloudflare R2
-const s3Client = new S3Client({
-  region: "auto", // R2 specific setting
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID!, // Add non-null assertion if checks are done elsewhere
-    secretAccessKey: R2_SECRET_ACCESS_KEY!,
-  },
-});
+/**
+ * Response interface for file listing
+ */
+interface FilesListResponse {
+  files: Array<{
+    key: string;
+    url: string;
+    lastModified: Date;
+    size: number;
+    contentType?: string;
+  }>;
+  folders: Array<{
+    name: string;
+    prefix: string;
+  }>;
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
+    pageSize: number;
+  };
+  currentPrefix: string;
+}
 
 export async function GET(req: Request) {
   try {
-    // 1. Check Authentication (Adjust role if needed - e.g., allow any logged-in user)
+    // 1. Check Authentication
     const session = await getServerSession(authOptions);
-    // For now, restrict to ADMIN, but consider if regular USERS should access their own images
-    if (!session || !session.user || session.user.role !== UserRole.ADMIN) {
-      return new NextResponse("Unauthorized", { status: 403 });
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    // Validate that R2 config is loaded correctly at runtime
-    if (!R2_BUCKET_NAME || !R2_PUBLIC_BUCKET_URL) {
-      // Use correct env var name
+    // 2. Validate R2 configuration
+    if (!R2Config.validateConfig()) {
       return new NextResponse(
-        "Server configuration error: R2 settings missing.",
+        "Server configuration error: R2 settings missing",
         { status: 500 }
       );
     }
 
-    // 2. Get prefix from query params
+    // 3. Parse query parameters
     const { searchParams } = new URL(req.url);
-    const prefix = searchParams.get("prefix") || ""; // Default to root
+    const query: ListFilesQuery = {
+      prefix: searchParams.get("prefix") || undefined,
+      contentType: (searchParams.get("contentType") as any) || undefined,
+      page: searchParams.get("page") || "0",
+      pageSize: searchParams.get("pageSize") || "50",
+      userId: searchParams.get("userId") || undefined,
+    };
 
-    // 3. List Objects and Common Prefixes (Folders) in the Bucket
-    const command = new ListObjectsV2Command({
-      Bucket: R2_BUCKET_NAME,
-      Prefix: prefix, // Use the provided prefix
-      Delimiter: "/", // Group by folder
-      // Optional: Add MaxKeys for pagination if needed
-    });
+    const page = parseInt(query.page || "0");
+    const pageSize = parseInt(query.pageSize || "50");
+    const currentUserId = session.user.id;
+    const targetUserId = query.userId || currentUserId;
 
-    const { Contents, CommonPrefixes } = await s3Client.send(command);
-
-    // 4. Format the response
-    const folders = CommonPrefixes?.map((commonPrefix) => ({
-      name: commonPrefix.Prefix?.replace(prefix, "").replace("/", "") || "", // Extract folder name
-      prefix: commonPrefix.Prefix || "", // Full prefix for navigation
-    }))
-      .filter((folder) => folder.name) // Ensure name is not empty
-      .sort((a, b) => a.name.localeCompare(b.name)); // Sort folders alphabetically
-
-    const images = Contents?.map((item) => ({
-      key: item.Key,
-      url: `${R2_PUBLIC_BUCKET_URL}/${item.Key}`, // Use correct env var name
-      lastModified: item.LastModified,
-      size: item.Size,
-    }))
-      // Filter out the prefix itself if it appears as content and any folder placeholders
-      .filter(
-        (item) => item.key && item.key !== prefix && !item.key.endsWith("/")
-      )
-      .sort(
-        (a, b) =>
-          (b.lastModified?.getTime() ?? 0) - (a.lastModified?.getTime() ?? 0)
-      ); // Sort images by date, newest first
-
-    // 5. Return folders and images
-    return NextResponse.json({
-      folders: folders || [],
-      images: images || [],
-      currentPrefix: prefix, // Include current prefix for context
-    });
-  } catch (error) {
-    // Log the full error object for more details
-    console.error("[R2_IMAGES_GET] Detailed Error listing R2 objects:", error);
-
-    let errorMessage = "Internal error listing images.";
-    if (error instanceof Error) {
-      // Include error name and potentially stack if helpful (be cautious in production)
-      errorMessage = `Failed to list images: ${error.name} - ${error.message}`;
-      // console.error(error.stack); // Uncomment for detailed stack trace during debugging
-    } else {
-      // Handle non-Error objects being thrown
-      errorMessage = `Failed to list images: An unknown error occurred.`;
+    // 4. Authorization check
+    // Users can only access their own files unless they are admins
+    if (
+      targetUserId !== currentUserId &&
+      session.user.role !== UserRole.ADMIN
+    ) {
+      return new NextResponse("Forbidden: Cannot access other users' files", {
+        status: 403,
+      });
     }
-    return new NextResponse(errorMessage, { status: 500 });
+
+    // 5. Ensure user folder exists
+    await UserFolderService.ensureUserFolderExists(targetUserId);
+
+    // 6. Determine the prefix based on content type
+    let effectivePrefix = query.prefix;
+    if (query.contentType && !query.prefix) {
+      switch (query.contentType) {
+        case "mockups":
+          effectivePrefix = UserFolderPaths.getMockupsPath(targetUserId);
+          break;
+        case "profile-pictures":
+          effectivePrefix =
+            UserFolderPaths.getProfilePicturesPath(targetUserId);
+          break;
+        case "assets":
+          effectivePrefix = UserFolderPaths.getAssetsPath(targetUserId);
+          break;
+        case "exports":
+          effectivePrefix = UserFolderPaths.getExportsPath(targetUserId);
+          break;
+        default:
+          effectivePrefix = UserFolderPaths.getUserBasePath(targetUserId);
+      }
+    } else if (!effectivePrefix) {
+      effectivePrefix = UserFolderPaths.getUserBasePath(targetUserId);
+    }
+
+    // 7. List files with pagination
+    const result = await UserFolderService.listUserFilesPaginated(
+      targetUserId,
+      effectivePrefix,
+      page,
+      pageSize
+    );
+
+    // 8. Format response
+    const config = R2Config.getConfig();
+    const files = result.files.map((file: any) => ({
+      key: file.key,
+      url: `${config.publicBucketUrl}/${file.key}`,
+      lastModified: file.lastModified,
+      size: file.size,
+      contentType: file.key.split(".").pop(), // Simple content type detection
+    }));
+
+    // Extract folders from the file listing
+    const foldersSet = new Set<string>();
+    result.files.forEach((file: any) => {
+      const relativePath = file.key.replace(effectivePrefix, "");
+      const pathParts = relativePath.split("/");
+      if (pathParts.length > 1) {
+        foldersSet.add(pathParts[0]);
+      }
+    });
+
+    const folders = Array.from(foldersSet)
+      .map((folderName) => ({
+        name: folderName,
+        prefix: `${effectivePrefix}/${folderName}/`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const response: FilesListResponse = {
+      files,
+      folders,
+      pagination: {
+        currentPage: result.currentPage,
+        totalPages: result.totalPages,
+        totalCount: result.totalCount,
+        pageSize,
+      },
+      currentPrefix: effectivePrefix,
+    };
+
+    console.log(`[R2_IMAGES_GET] Listed files for user ${targetUserId}:`, {
+      contentType: query.contentType,
+      fileCount: files.length,
+      folderCount: folders.length,
+      page,
+      pageSize,
+    });
+
+    return NextResponse.json(response);
+  } catch (error: any) {
+    console.error("[R2_IMAGES_GET] Error:", error);
+    return new NextResponse(`Internal Server Error: ${error.message}`, {
+      status: 500,
+    });
   }
 }
 
 // POST handler for uploading images
 export async function POST(req: Request) {
   try {
-    // 1. Check Authentication (Allow any logged-in user to upload)
+    // 1. Check Authentication
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return new NextResponse("Unauthorized", { status: 403 });
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized", { status: 401 });
     }
-    const userId = session.user.id; // Get user ID for potential folder structure
 
-    // 2. Validate R2 configuration at runtime
-    if (
-      !R2_BUCKET_NAME ||
-      !CLOUDFLARE_ACCOUNT_ID ||
-      !R2_ACCESS_KEY_ID ||
-      !R2_SECRET_ACCESS_KEY ||
-      !R2_PUBLIC_BUCKET_URL
-    ) {
-      console.error(
-        "[R2_IMAGES_POST] Runtime configuration error: R2 settings missing."
-      );
-      // Log which ones are missing at runtime:
-      if (!R2_BUCKET_NAME)
-        console.error("[R2_IMAGES_POST] Missing Runtime: R2_BUCKET_NAME");
-      if (!CLOUDFLARE_ACCOUNT_ID)
-        console.error(
-          "[R2_IMAGES_POST] Missing Runtime: CLOUDFLARE_ACCOUNT_ID"
-        );
-      if (!R2_ACCESS_KEY_ID)
-        console.error("[R2_IMAGES_POST] Missing Runtime: R2_ACCESS_KEY_ID");
-      if (!R2_SECRET_ACCESS_KEY)
-        console.error("[R2_IMAGES_POST] Missing Runtime: R2_SECRET_ACCESS_KEY");
-      if (!R2_PUBLIC_BUCKET_URL)
-        console.error("[R2_IMAGES_POST] Missing Runtime: R2_PUBLIC_BUCKET_URL");
+    const userId = session.user.id;
 
+    // 2. Validate R2 configuration
+    if (!R2Config.validateConfig()) {
       return new NextResponse(
-        "Server configuration error: R2 settings missing.", // Keep original user-facing message
+        "Server configuration error: R2 settings missing",
         { status: 500 }
       );
-    } else {
-      console.log("[R2_IMAGES_POST] Runtime R2 configuration check passed."); // Added log
     }
 
     // 3. Parse FormData
     const formData = await req.formData();
-    const file = formData.get("file") as File | null; // Assuming the file input name is 'file'
+    const file = formData.get("file") as File | null;
+    const contentType = (formData.get("contentType") as string) || "assets";
+    const assetType = (formData.get("assetType") as AssetType) || "uploads";
 
     if (!file) {
-      return new NextResponse("No file provided.", { status: 400 });
+      return new NextResponse("No file provided", { status: 400 });
     }
 
-    // Optional: Validate file type and size here if needed
-    // e.g., if (!file.type.startsWith('image/')) { ... }
-    // e.g., if (file.size > MAX_FILE_SIZE) { ... }
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      return new NextResponse("Invalid file type. Only images are allowed", {
+        status: 400,
+      });
+    }
 
-    // 4. Generate unique filename and key
-    const fileExtension = file.name.split(".").pop();
-    // Consider adding user ID to the path for organization: e.g., `users/${userId}/images/${randomUUID()}.${fileExtension}`
-    const fileName = `${randomUUID()}.${fileExtension}`;
-    const key = `user-uploads/${fileName}`; // Example path, adjust as needed
+    // 4. Ensure user folder exists
+    await UserFolderService.ensureUserFolderExists(userId);
 
-    // 5. Upload to R2 using Upload from lib-storage
+    // 5. Generate path based on content type
+    let pathInfo: { key: string; publicUrl: string };
+    const fileExtension = file.name.split(".").pop() || "";
+
+    switch (contentType) {
+      case "assets":
+        pathInfo = await UserFolderService.getAssetPath(
+          userId,
+          assetType,
+          undefined,
+          fileExtension
+        );
+        break;
+      case "mockups":
+        // For mockups, we need additional parameters
+        const designId = formData.get("designId") as string;
+        const mockupType = formData.get("mockupType") as any;
+        if (!designId || !mockupType) {
+          return new NextResponse(
+            "Missing required parameters for mockups: designId and mockupType",
+            { status: 400 }
+          );
+        }
+        pathInfo = await UserFolderService.getMockupPath(
+          userId,
+          designId,
+          mockupType,
+          fileExtension
+        );
+        break;
+      case "profile-pictures":
+        const profileType = (formData.get("profileType") as any) || "current";
+        pathInfo = await UserFolderService.getProfilePicturePath(
+          userId,
+          profileType,
+          fileExtension
+        );
+        break;
+      case "exports":
+        const exportType =
+          (formData.get("exportType") as ExportType) || "designs";
+        pathInfo = await UserFolderService.getExportPath(
+          userId,
+          exportType,
+          file.name
+        );
+        break;
+      default:
+        // Default to assets/uploads
+        pathInfo = await UserFolderService.getAssetPath(
+          userId,
+          "uploads",
+          undefined,
+          fileExtension
+        );
+    }
+
+    // 6. Upload to R2
+    const client = R2Config.getS3Client();
+    const r2Config = R2Config.getConfig();
+
     const upload = new Upload({
-      client: s3Client,
+      client,
       params: {
-        Bucket: R2_BUCKET_NAME,
-        Key: key,
-        Body: file.stream(), // Use the file stream
-        ContentType: file.type, // Set content type for proper browser handling
-        // ACL: 'public-read', // R2 doesn't use ACLs like S3, rely on bucket policy/public URL
+        Bucket: r2Config.bucketName,
+        Key: pathInfo.key,
+        Body: file.stream(),
+        ContentType: file.type,
       },
-      // Optional: Configure queue size and part size for large files
-      // queueSize: 4, // Concurrent parts upload
-      // partSize: 1024 * 1024 * 5, // 5 MB parts
     });
 
-    // Optional: Log progress
-    // upload.on("httpUploadProgress", (progress) => {
-    //   console.log(progress);
-    // });
-
-    await upload.done(); // Execute the upload
-
-    // 6. Construct the public URL
-    const imageUrl = `${R2_PUBLIC_BUCKET_URL}/${key}`;
+    await upload.done();
 
     // 7. Return the URL
-    return NextResponse.json({ url: imageUrl });
-  } catch (error) {
-    console.error("[R2_IMAGES_POST] Detailed Error uploading to R2:", error);
+    console.log(`[R2_IMAGES_POST] Uploaded file for user ${userId}:`, {
+      contentType,
+      key: pathInfo.key,
+      size: file.size,
+      type: file.type,
+    });
 
-    let errorMessage = "Internal error uploading image.";
-    if (error instanceof Error) {
-      errorMessage = `Failed to upload image: ${error.name} - ${error.message}`;
-    } else {
-      errorMessage = `Failed to upload image: An unknown error occurred.`;
-    }
-    return new NextResponse(errorMessage, { status: 500 });
+    return NextResponse.json({
+      url: pathInfo.publicUrl,
+      key: pathInfo.key,
+      contentType,
+      size: file.size,
+    });
+  } catch (error: any) {
+    console.error("[R2_IMAGES_POST] Error:", error);
+    return new NextResponse(`Internal Server Error: ${error.message}`, {
+      status: 500,
+    });
   }
 }

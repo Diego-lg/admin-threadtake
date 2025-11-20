@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"; // Replace Geist fonts with Inter
 import "./globals.css";
 
 import { Providers } from "@/providers/providers"; // Import the new wrapper
+import { ServerInitializer } from "@/components/server-initializer";
 const inter = Inter({
   variable: "--font-inter", // Use a standard variable name
   subsets: ["latin"],
@@ -28,6 +29,7 @@ export default function RootLayout({
       >
         <Providers>
           {/* Use the wrapper component */}
+          <ServerInitializer />
           {children}
         </Providers>
       </body>

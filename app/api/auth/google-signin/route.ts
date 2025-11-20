@@ -5,7 +5,7 @@ import { UserRole, UserStatus } from "@prisma/client"; // Import enums
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, email, image, providerAccountId } = body;
+    const { name, email, image, providerAccountId, isFirstTime } = body;
 
     // --- Validation ---
     if (!email) {
@@ -25,6 +25,8 @@ export async function POST(req: Request) {
       include: { accounts: true }, // Include linked accounts to check provider
     });
 
+    let isFirstTimeUser = false;
+
     if (user) {
       // User with this email exists. Check if they have a Google account linked.
       const googleAccount = user.accounts.find(
@@ -36,16 +38,12 @@ export async function POST(req: Request) {
       if (googleAccount) {
         // --- Scenario 1: User exists and has already signed in with this Google account ---
         console.log(`[Google Sign-In] Existing user found for email: ${email}`);
-        // Optionally update name/image if they've changed in Google
-        if (user.name !== name || user.image !== image) {
-          user = await prismadb.user.update({
-            where: { id: user.id },
-            data: {
-              name: name || user.name,
-              image: image || user.image,
-            },
-            include: { accounts: true },
-          });
+        // For returning Google users, don't update name/image from Google
+        // Only update if user has explicitly set them to null/empty
+        if (name === null && user.name !== null) {
+          // Don't overwrite existing name with null
+        } else if (image === null && user.image !== null) {
+          // Don't overwrite existing image with null
         }
       } else {
         // --- Scenario 2: User exists (e.g., created via credentials) but is now linking Google ---
@@ -64,14 +62,16 @@ export async function POST(req: Request) {
     } else {
       // --- Scenario 3: New user, create both User and Account records ---
       console.log(`[Google Sign-In] Creating new user for email: ${email}`);
+      isFirstTimeUser = true;
       user = await prismadb.user.create({
         data: {
           email,
-          name,
-          image,
+          name: null, // Don't auto-populate name from Google
+          image: null, // Don't auto-populate image from Google
           emailVerified: new Date(), // Assume email is verified by Google
           role: UserRole.USER,
           status: UserStatus.ACTIVE,
+          hasCompletedProfileSetup: false, // Add flag to track profile setup completion
           accounts: {
             create: {
               type: "oauth",
@@ -94,6 +94,8 @@ export async function POST(req: Request) {
         email: user.email,
         image: user.image,
         role: user.role,
+        hasCompletedProfileSetup: user.hasCompletedProfileSetup ?? false,
+        isFirstTimeUser,
       },
     });
   } catch (error) {

@@ -1,26 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth"; // Updated import path
+import { authOptions } from "@/lib/auth";
 import prismadb from "@/lib/prismadb";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { v4 as uuidv4 } from "uuid";
-
-// --- R2 Configuration ---
-const R2_ENDPOINT = process.env.R2_ENDPOINT;
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
-const R2_PUBLIC_BUCKET_URL = process.env.R2_PUBLIC_BUCKET_URL; // Corrected variable name
-
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: R2_ENDPOINT!,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID!,
-    secretAccessKey: R2_SECRET_ACCESS_KEY!,
-  },
-});
+import { R2Config } from "@/lib/r2-config";
+import {
+  UserFolderPaths,
+  ProfilePictureType,
+  R2UserStorage,
+} from "@/lib/r2-user-storage";
+import { UserFolderService } from "@/services/user-folder-service";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 5; // 5 minutes for upload URL
 
@@ -59,8 +47,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const userId = session.user.id;
+
+    // Validate R2 configuration
+    if (!R2Config.validateConfig()) {
+      return addCorsHeaders(
+        new NextResponse("Server configuration error: R2 settings missing", {
+          status: 500,
+        })
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const profileType =
+      (formData.get("profileType") as ProfilePictureType) || "current";
 
     if (!file) {
       return addCorsHeaders(
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Basic validation (optional: add more checks like file size, type)
+    // Basic validation
     if (!file.type.startsWith("image/")) {
       return addCorsHeaders(
         new NextResponse("Invalid file type, please upload an image.", {
@@ -77,44 +78,47 @@ export async function POST(req: Request) {
       );
     }
 
+    // Ensure user folder structure exists
+    await UserFolderService.ensureUserFolderExists(userId);
+
+    // Fetch current user to get the old image URL
+    const currentUser = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { image: true },
+    });
+    const oldImageUrl = currentUser?.image;
+
+    // Generate path for the new profile picture
+    const fileExtension = file.name.split(".").pop() || "jpg";
+    const pathInfo = await UserFolderService.getProfilePicturePath(
+      userId,
+      profileType,
+      fileExtension
+    );
+
     // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Fetch current user to get the old image URL
-    const currentUser = await prismadb.user.findUnique({
-      where: { id: session.user.id },
-      select: { image: true }, // Select only the old image URL
-    });
-    const oldImageUrl = currentUser?.image;
-    // const oldImageKey = currentUser?.imageKey; // TODO: Uncomment and use after adding imageKey to schema
+    // Upload to R2 using the new user-centric structure
+    const client = R2Config.getS3Client();
+    const r2Config = R2Config.getConfig();
 
-    // --- Upload to R2 using Signed URL ---
-    if (
-      !R2_ENDPOINT ||
-      !R2_ACCESS_KEY_ID ||
-      !R2_SECRET_ACCESS_KEY ||
-      !R2_BUCKET_NAME ||
-      !R2_PUBLIC_BUCKET_URL // Corrected variable name
-    ) {
-      throw new Error("R2 storage is not configured correctly on the server.");
-    }
+    // Generate presigned URL for upload
+    const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+    const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
 
-    const uniqueFilename = `${uuidv4()}-${file.name.replace(/\s+/g, "_")}`; // Make filename URL-safe
-    const key = `profile_pictures/${uniqueFilename}`; // Store in 'profile_pictures' folder
-
-    // 1. Generate Signed URL for PUT request
     const putCommand = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
+      Bucket: r2Config.bucketName,
+      Key: pathInfo.key,
       ContentType: file.type,
     });
 
-    const signedUrl = await getSignedUrl(s3Client, putCommand, {
+    const signedUrl = await getSignedUrl(client, putCommand, {
       expiresIn: SIGNED_URL_EXPIRES_IN,
     });
 
-    // 2. Upload the file buffer to the Signed URL
+    // Upload the file buffer to the signed URL
     const uploadResponse = await fetch(signedUrl, {
       method: "PUT",
       body: buffer,
@@ -131,86 +135,210 @@ export async function POST(req: Request) {
         r2Error = `Failed to upload profile picture to R2: ${
           uploadResponse.statusText
         } - ${errorText.substring(0, 100)}`;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         r2Error = `Failed to upload profile picture to R2: ${uploadResponse.statusText}`;
       }
       throw new Error(r2Error);
     }
 
-    // 3. Construct the public URL
-    const newImageUrl = `${R2_PUBLIC_BUCKET_URL.replace(/\/$/, "")}/${key}`; // Corrected variable name
-    const newImageKey = key; // The key used for the upload
-
     console.log(
-      `Successfully uploaded profile picture to R2. Key: ${newImageKey}, URL: ${newImageUrl}`
+      `[PROFILE_PICTURE_POST] Successfully uploaded profile picture for user ${userId}:`,
+      {
+        key: pathInfo.key,
+        url: pathInfo.publicUrl,
+        profileType,
+        size: file.size,
+      }
     );
 
-    // const newImageId = uploadResult.id; // We use the key now
-
-    // --- Delete Old Image from R2 ---
-    // --- TODO: Delete Old Image from R2 (Requires imageKey in schema) ---
-    // if (oldImageKey && oldImageKey !== newImageKey) {
-    //   try {
-    //     console.log(`Attempting to delete old image from R2 with key: ${oldImageKey}`);
-    //     const deleteCommand = new DeleteObjectCommand({
-    //       Bucket: R2_BUCKET_NAME,
-    //       Key: oldImageKey,
-    //     });
-    //     await s3Client.send(deleteCommand);
-    //     console.log(`Successfully deleted old image from R2: ${oldImageKey}`);
-    //   } catch (deleteError) {
-    //     console.error("Failed to delete old profile picture from R2:", deleteError);
-    //   }
-    // } else if (oldImageKey === newImageKey) {
-    //      console.warn("Old and new image keys are the same. Skipping deletion.");
-    // }
-    // --- End Delete Old Image ---
-    // Note: Deletion logic is commented out until imageKey is added to the User model.
-    // You'll also need to extract the key from the oldImageUrl if imageKey isn't available.
-    if (
-      oldImageUrl &&
-      R2_PUBLIC_BUCKET_URL &&
-      oldImageUrl.startsWith(R2_PUBLIC_BUCKET_URL)
-    ) {
-      // Corrected variable name
-      console.warn(
-        `Old image deletion skipped for ${oldImageUrl}. Implement deletion using R2 key.`
-      );
+    // If this is a "current" profile picture, update the user record
+    let updatedUser = null;
+    if (profileType === "current") {
+      updatedUser = await prismadb.user.update({
+        where: { id: userId },
+        data: {
+          image: pathInfo.publicUrl,
+        },
+        select: { name: true, email: true, image: true, role: true },
+      });
     }
-    // --- End Delete Old Image ---
 
-    // Update user in the database with the NEW image URL
-    const updatedUser = await prismadb.user.update({
-      where: { id: session.user.id },
-      data: {
-        image: newImageUrl, // Store the public URL
-        // imageKey: newImageKey, // TODO: Uncomment after adding imageKey to schema
-      },
-      select: { name: true, email: true, image: true, role: true }, // Select only existing fields
-    });
+    // TODO: Implement old image deletion using the new folder structure
+    // This would involve extracting the key from the old URL and using UserFolderService.deleteUserFile
 
-    // Return the necessary fields for the client-side update() function
+    // Return response
     const responseData = {
-      name: updatedUser.name,
-      email: updatedUser.email, // email shouldn't change, but good practice
-      image: updatedUser.image,
-      role: updatedUser.role,
-      // id is already in the token, not strictly needed here
+      success: true,
+      profileType,
+      imageUrl: pathInfo.publicUrl,
+      imageKey: pathInfo.key,
+      user: updatedUser
+        ? {
+            name: updatedUser.name,
+            email: updatedUser.email,
+            image: updatedUser.image,
+            role: updatedUser.role,
+          }
+        : null,
     };
+
     const response = NextResponse.json(responseData);
     return addCorsHeaders(response);
-  } catch (error) {
-    console.error("[PROFILE_PICTURE_POST]", error);
+  } catch (error: any) {
+    console.error("[PROFILE_PICTURE_POST] Error:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Internal Server Error";
     const statusCode =
-      errorMessage.includes("R2") || // Check for R2 errors
-      errorMessage.includes("Failed to upload") // Keep generic upload failure check
-        ? 500 // Internal server / Cloudinary issue
-        : 400; // Likely client-side issue (bad file, etc.)
+      errorMessage.includes("R2") || errorMessage.includes("Failed to upload")
+        ? 500
+        : 400;
+
     return addCorsHeaders(
       new NextResponse(errorMessage, { status: statusCode })
+    );
+  }
+}
+
+// Handle GET request to retrieve profile picture history
+export async function GET(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return addCorsHeaders(
+        new NextResponse("Unauthenticated", { status: 401 })
+      );
+    }
+
+    const userId = session.user.id;
+    const { searchParams } = new URL(req.url);
+    const profileType =
+      (searchParams.get("profileType") as ProfilePictureType) || "current";
+
+    // Validate R2 configuration
+    if (!R2Config.validateConfig()) {
+      return addCorsHeaders(
+        new NextResponse("Server configuration error: R2 settings missing", {
+          status: 500,
+        })
+      );
+    }
+
+    // Ensure user folder exists
+    await UserFolderService.ensureUserFolderExists(userId);
+
+    // List profile pictures based on type
+    const prefix =
+      profileType === "current"
+        ? `${UserFolderPaths.getProfilePicturesPath(userId)}/`
+        : `${UserFolderPaths.getProfilePictureHistoryPath(userId)}/`;
+
+    const result = await UserFolderService.listUserFilesPaginated(
+      userId,
+      prefix,
+      0,
+      20 // Limit to 20 most recent profile pictures
+    );
+
+    const config = R2Config.getConfig();
+    const profilePictures = result.files.map((file: any) => ({
+      key: file.key,
+      url: `${config.publicBucketUrl}/${file.key}`,
+      lastModified: file.lastModified,
+      size: file.size,
+    }));
+
+    const response = NextResponse.json({
+      profileType,
+      profilePictures,
+      totalCount: result.totalCount,
+    });
+
+    return addCorsHeaders(response);
+  } catch (error: any) {
+    console.error("[PROFILE_PICTURE_GET] Error:", error);
+    return addCorsHeaders(
+      new NextResponse(`Internal Server Error: ${error.message}`, {
+        status: 500,
+      })
+    );
+  }
+}
+
+// Handle DELETE request to delete profile pictures
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return addCorsHeaders(
+        new NextResponse("Unauthenticated", { status: 401 })
+      );
+    }
+
+    const userId = session.user.id;
+    const { searchParams } = new URL(req.url);
+    const imageKey = searchParams.get("imageKey");
+
+    if (!imageKey) {
+      return addCorsHeaders(
+        new NextResponse("Missing imageKey parameter", { status: 400 })
+      );
+    }
+
+    // Validate user has access to delete this file
+    const hasAccess = await UserFolderService.validateUserFileAccess(
+      userId,
+      imageKey
+    );
+    if (!hasAccess) {
+      return addCorsHeaders(
+        new NextResponse("Forbidden: Cannot access this file", { status: 403 })
+      );
+    }
+
+    // Delete the file
+    const deleted = await UserFolderService.deleteUserFile(userId, imageKey);
+
+    if (!deleted) {
+      return addCorsHeaders(
+        new NextResponse("Failed to delete profile picture", { status: 500 })
+      );
+    }
+
+    // If this was the current profile picture, update user record
+    const currentUser = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { image: true },
+    });
+
+    const config = R2Config.getConfig();
+    const currentImageUrl = `${config.publicBucketUrl}/${imageKey}`;
+
+    if (currentUser?.image === currentImageUrl) {
+      await prismadb.user.update({
+        where: { id: userId },
+        data: { image: null },
+      });
+    }
+
+    console.log(
+      `[PROFILE_PICTURE_DELETE] Deleted profile picture for user ${userId}:`,
+      { imageKey }
+    );
+
+    const response = NextResponse.json({
+      success: true,
+      message: "Profile picture deleted successfully",
+    });
+
+    return addCorsHeaders(response);
+  } catch (error: any) {
+    console.error("[PROFILE_PICTURE_DELETE] Error:", error);
+    return addCorsHeaders(
+      new NextResponse(`Internal Server Error: ${error.message}`, {
+        status: 500,
+      })
     );
   }
 }

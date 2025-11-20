@@ -170,7 +170,7 @@ export async function GET(req: Request) {
     const backendUrl =
       process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5001";
     const r2Url =
-      process.env.NEXT_PUBLIC_R2_URL ||
+      process.env.R2_PUBLIC_BUCKET_URL ||
       "https://pub-167bcbb6797c48d686d7dacfba94f17f.r2.dev";
 
     const transformUrl = (url: string | null | undefined): string | null => {

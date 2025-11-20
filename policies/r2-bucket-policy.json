@@ -1,0 +1,237 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowPublicReadForSpecificFolders",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::bucket-name/users/*/profile-pictures/current/*",
+        "arn:aws:s3:::bucket-name/users/*/exports/public/*"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "users/*/profile-pictures/current/*",
+            "users/*/exports/public/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyPublicAccessToSensitiveFolders",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::bucket-name/users/*/assets/*",
+        "arn:aws:s3:::bucket-name/users/*/mockups/*",
+        "arn:aws:s3:::bucket-name/users/*/exports/private/*",
+        "arn:aws:s3:::bucket-name/users/*/profile-pictures/history/*"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "users/*/assets/*",
+            "users/*/mockups/*",
+            "users/*/exports/private/*",
+            "users/*/profile-pictures/history/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowAuthenticatedUserAccessToOwnFolder",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::bucket-name/users/${aws:userid}/*",
+        "arn:aws:s3:::bucket-name/users/${aws:userid}"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["users/${aws:userid}/*"]
+        },
+        "StringEquals": {
+          "s3:existing-object-tag/access-level": "user"
+        }
+      }
+    },
+    {
+      "Sid": "AllowAdminAccessToAllUserFolders",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::account-id:role/admin-role"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::bucket-name/users/*",
+        "arn:aws:s3:::bucket-name/users"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/role": "admin"
+        }
+      }
+    },
+    {
+      "Sid": "DenyCrossUserAccess",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::bucket-name/users/*",
+      "Condition": {
+        "StringNotLike": {
+          "s3:prefix": "users/${aws:userid}/*"
+        },
+        "ForAllValues:StringNotEquals": {
+          "aws:PrincipalTag/role": "admin"
+        }
+      }
+    },
+    {
+      "Sid": "AllowPresignedURLAccess",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "${aws:TokenIssueTime + 3600}"
+        },
+        "StringEquals": {
+          "s3:existing-object-tag/presigned": "true"
+        }
+      }
+    },
+    {
+      "Sid": "RestrictFileUploadTypes",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "ForAllValues:StringNotLike": {
+          "s3:x-amz-meta-content-type": [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/svg+xml",
+            "application/pdf",
+            "application/zip"
+          ]
+        },
+        "Null": {
+          "s3:x-amz-meta-content-type": "false"
+        }
+      }
+    },
+    {
+      "Sid": "RestrictFileSize",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "NumericGreaterThan": {
+          "s3:x-amz-meta-content-length": "52428800"
+        }
+      }
+    },
+    {
+      "Sid": "RequireEncryptionForUploads",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "StringNotEquals": {
+          "s3:x-amz-server-side-encryption": ["AES256", "aws:kms"]
+        },
+        "Null": {
+          "s3:x-amz-server-side-encryption": "true"
+        }
+      }
+    },
+    {
+      "Sid": "DenyInsecureConnections",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::bucket-name", "arn:aws:s3:::bucket-name/*"],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    },
+    {
+      "Sid": "AllowCORSForSpecificOrigins",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": ["s3:GetObject", "s3:Options"],
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "StringLike": {
+          "aws:Referer": [
+            "https://threadtake.com/*",
+            "https://www.threadtake.com/*",
+            "https://admin.threadtake.com/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "RequireMFAForAdminOperations",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": "arn:aws:iam::account-id:role/admin-role"
+      },
+      "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": "arn:aws:s3:::bucket-name/users/*/*",
+      "Condition": {
+        "BoolIfExists": {
+          "aws:MultiFactorAuthPresent": "false"
+        }
+      }
+    },
+    {
+      "Sid": "LogAllAccessAttempts",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "cloudtrail.amazonaws.com"
+      },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::bucket-name/logs/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:prefix": "logs/"
+        }
+      }
+    }
+  ]
+}

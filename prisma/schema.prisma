@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,42 +7,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  USER
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  // Optional: Add DELETED for soft deletes
-  // DELETED
-}
-
 model Store {
   id         String      @id @default(uuid())
   name       String
   userId     String
-  billboards Billboard[] @relation("StoreToBillboard")
-  categories Category[]  @relation("StoreToCategory")
-  sizes      Size[]      @relation("StoreToSize")
-  colors     Color[]     @relation("StoreToColor")
-  products   Product[]   @relation("StoreToProduct")
-  orders     Order[]     @relation("@StoreToOrder")
-  salesGoals SalesGoal[] // Add relation to SalesGoal model
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
+  billboards Billboard[] @relation("StoreToBillboard")
+  categories Category[]  @relation("StoreToCategory")
+  colors     Color[]     @relation("StoreToColor")
+  orders     Order[]     @relation("@StoreToOrder")
+  products   Product[]   @relation("StoreToProduct")
+  salesGoals SalesGoal[]
+  sizes      Size[]      @relation("StoreToSize")
 }
 
 model Billboard {
   id         String     @id @default(uuid())
   storeId    String
-  store      Store      @relation("StoreToBillboard", fields: [storeId], references: [id])
   label      String
   imageUrl   String
-  categories Category[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+  store      Store      @relation("StoreToBillboard", fields: [storeId], references: [id])
+  categories Category[]
 
   @@index([storeId])
 }
@@ -56,14 +38,13 @@ model Billboard {
 model Category {
   id          String    @id @default(uuid())
   storeId     String
-  store       Store     @relation("StoreToCategory", fields: [storeId], references: [id])
   billboardId String
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   billboard   Billboard @relation(fields: [billboardId], references: [id])
+  store       Store     @relation("StoreToCategory", fields: [storeId], references: [id])
   products    Product[] @relation("CategoryToProduct")
-
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
   @@index([storeId])
   @@index([billboardId])
@@ -72,13 +53,13 @@ model Category {
 model Size {
   id          String        @id @default(uuid())
   storeId     String
-  store       Store         @relation("StoreToSize", fields: [storeId], references: [id])
   name        String
   value       String
-  products    Product[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  products    Product[]
   SavedDesign SavedDesign[]
+  store       Store         @relation("StoreToSize", fields: [storeId], references: [id])
 
   @@index([storeId])
 }
@@ -86,41 +67,39 @@ model Size {
 model Color {
   id          String        @id @default(uuid())
   storeId     String
-  store       Store         @relation("StoreToColor", fields: [storeId], references: [id])
   name        String
   value       String
-  products    Product[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  store       Store         @relation("StoreToColor", fields: [storeId], references: [id])
+  products    Product[]
   SavedDesign SavedDesign[]
 
   @@index([storeId])
 }
 
 model Product {
-  id         String      @id @default(uuid())
-  storeId    String
-  store      Store       @relation("StoreToProduct", fields: [storeId], references: [id])
-  categoryId String
-  category   Category    @relation("CategoryToProduct", fields: [categoryId], references: [id])
-  name       String
-  price      Decimal
-  isFeatured Boolean     @default(false)
-  isArchived Boolean     @default(false)
-  sizeId     String
-  size       Size        @relation(fields: [sizeId], references: [id])
-  colorId    String
-  color      Color       @relation(fields: [colorId], references: [id])
-  images     Image[]
-  orderItems OrderItem[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id            String        @id @default(uuid())
+  storeId       String
+  categoryId    String
+  name          String
+  price         Decimal
+  isFeatured    Boolean       @default(false)
+  isArchived    Boolean       @default(false)
+  sizeId        String
+  colorId       String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  savedDesignId String?       @unique
+  images        Image[]
+  orderItems    OrderItem[]
+  category      Category      @relation("CategoryToProduct", fields: [categoryId], references: [id])
+  color         Color         @relation(fields: [colorId], references: [id])
+  savedDesign   SavedDesign?  @relation("ProductForDesign", fields: [savedDesignId], references: [id])
+  size          Size          @relation(fields: [sizeId], references: [id])
+  store         Store         @relation("StoreToProduct", fields: [storeId], references: [id])
+  SavedDesign   SavedDesign[]
 
-  SavedDesign SavedDesign[] // Relation to designs using this as a base product
-
-  // Link to the SavedDesign this product represents (if any)
-  savedDesignId String?      @unique
-  savedDesign   SavedDesign? @relation(name: "ProductForDesign", fields: [savedDesignId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   @@index([storeId])
   @@index([categoryId])
   @@index([sizeId])
@@ -130,10 +109,10 @@ model Product {
 model Image {
   id        String   @id @default(uuid())
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   url       String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
@@ -141,25 +120,25 @@ model Image {
 model Order {
   id         String      @id @default(uuid())
   storeId    String
-  store      Store       @relation("@StoreToOrder", fields: [storeId], references: [id])
-  userId     String? // Optional: Link to user, allows guest orders if null
-  user       User?       @relation(fields: [userId], references: [id]) // Optional relation
-  orderItems OrderItem[]
+  userId     String?
   isPaid     Boolean     @default(false)
   phone      String      @default("")
   address    String      @default("")
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
+  store      Store       @relation("@StoreToOrder", fields: [storeId], references: [id])
+  user       User?       @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
 
   @@index([storeId])
-  @@index([userId]) // Index for user orders lookup
+  @@index([userId])
 }
 
 model OrderItem {
   id        String  @id @default(uuid())
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
   productId String
+  order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
@@ -172,15 +151,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -197,31 +175,42 @@ model Session {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  name           String?
-  email          String?       @unique
-  emailVerified  DateTime?
-  image          String?
-  hashedPassword String? // Added for Credentials provider
-  role           UserRole      @default(USER) // Add role field
-  status         UserStatus    @default(ACTIVE) // Add status field
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  // User Preferences
-  darkMode       Boolean?      @default(false) // Default to light mode
-  emailNotifications Boolean?  @default(true)  // Default to receiving emails
-  // --- Creator Profile Fields ---
-  bio                String?   @db.Text // Optional creator biography
-  portfolioUrl       String?            // Optional link to external portfolio
-  profileCardBackground String? // Optional CSS background for profile card (Phase 2)
-  isCreator          Boolean   @default(false) // Flag to identify creators
+  id                    String             @id @default(cuid())
+  name                  String?
+  email                 String?            @unique
+  emailVerified         DateTime?
+  image                 String?
+  hashedPassword        String?
+  role                  UserRole           @default(USER)
+  status                UserStatus         @default(ACTIVE)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  darkMode              Boolean?           @default(false)
+  emailNotifications    Boolean?           @default(true)
+  bio                   String?
+  portfolioUrl          String?
+  profileCardBackground String?
+  isCreator             Boolean            @default(false)
+  profilePictureKey     String?
+  profilePicturePath    String?
+  profilePictureHistory String[]           @default([])
+  r2FolderCreated       Boolean            @default(false)
+  storageUsageBytes     BigInt             @default(0)
+  maxSavedDesigns       Int?
+  hasCompletedProfileSetup Boolean          @default(false)
+  accounts              Account[]
+  mockupJobs            MockupJob[]
+  orders                Order[]
+  r2FileMetadata        R2FileMetadata[]
+  migrationLogs         R2MigrationLog[]
+  ratings               Rating[]
+  savedDesigns          SavedDesign[]
+  sessions              Session[]
+  fileMetadata          UserFileMetadata[]
 
-  accounts       Account[]
-  sessions       Session[]
-  orders         Order[] // Relation to user's orders
-  savedDesigns   SavedDesign[] // Relation to user's saved designs
-  ratings        Rating[]      // Relation to ratings submitted by the user
-  maxSavedDesigns Int?          // User-specific limit, null means use global default
+  @@index([profilePictureKey])
+  @@index([r2FolderCreated])
+  @@index([storageUsageBytes])
 }
 
 model VerificationToken {
@@ -232,73 +221,226 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// Model for Design Ratings/Reviews
 model Rating {
   id            String      @id @default(uuid())
-  score         Int // e.g., 1-5 stars
-  comment       String?     @db.Text // Optional review text
+  score         Int
+  comment       String?
   createdAt     DateTime    @default(now())
-
-  userId        String // Who submitted the rating
+  userId        String
+  savedDesignId String
+  savedDesign   SavedDesign @relation(fields: [savedDesignId], references: [id], onDelete: Cascade)
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  savedDesignId String // Which design was rated
-  savedDesign   SavedDesign @relation(fields: [savedDesignId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, savedDesignId]) // User can only rate a design once
+  @@unique([userId, savedDesignId])
   @@index([userId])
   @@index([savedDesignId])
 }
 
-// Model for User Saved Designs
 model SavedDesign {
-  id         String  @id @default(uuid())
-  userId     String
-  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade) // Link to User
-  productId  String
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade) // Link to Product
-  colorId    String
-  color      Color   @relation(fields: [colorId], references: [id]) // Link to Color
-  sizeId     String
-  size       Size    @relation(fields: [sizeId], references: [id]) // Link to Size
-  customText String? // Optional custom text field
-  designImageUrl String? // URL for the generated design preview image
-  mockupImageUrl String? // URL for an optional product mockup image
-  uploadedLogoUrl String? // URL for the original uploaded logo (in R2)
-  uploadedPatternUrl String? // URL for the original uploaded pattern (in R2)
-  shirtColorHex      String? // Hex code of the shirt color
-  isLogoMode         Boolean? // True if logo mode, false if pattern mode
-  logoScale          Float? // Scale factor for the logo
-  logoOffsetX        Float? // Horizontal offset for the logo (0-1 range?)
-  logoOffsetY        Float? // Vertical offset for the logo (0-1 range?)
-  logoTargetPart     String? // "front" or "back"
-  description        String?  // Optional description added by creator
-  tags               String[] @default([]) // Tags for filtering/searching
-  viewCount          Int      @default(0) // Track views for popularity sorting
-  isShared           Boolean  @default(false) // Field to track sharing status
-  usageRights        String?            // e.g., "Personal Use Only", "Commercial Use Allowed"
-  // --- Phase 2 Rating Fields ---
-  averageRating      Float    @default(0) // Average score from ratings
-  ratingCount        Int      @default(0) // Number of ratings received
-  ratings            Rating[] // Relation to ratings received
+  id                 String    @id @default(uuid())
+  userId             String
+  productId          String
+  colorId            String
+  sizeId             String
+  customText         String?
+  designImageUrl     String?
+  mockupImageUrl     String?
+  uploadedLogoUrl    String?
+  uploadedPatternUrl String?
+  shirtColorHex      String?
+  isLogoMode         Boolean?
+  logoScale          Float?
+  logoOffsetX        Float?
+  logoOffsetY        Float?
+  logoTargetPart     String?
+  description        String?
+  tags               String[]  @default([])
+  viewCount          Int       @default(0)
+  isShared           Boolean   @default(false)
+  usageRights        String?
+  averageRating      Float     @default(0)
+  ratingCount        Int       @default(0)
+  designId           String?
+  designFolderKey    String?
+  mockupFolderKey    String?
+  designImageKey     String?
+  mockupImageKey     String?
+  uploadedLogoKey    String?
+  uploadedPatternKey String?
+  assetKeys          Json?
+  mockupKeys         Json?
+  migrationStatus    String    @default("pending")
+  migratedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  derivedProductId   String?   @unique
+  derivedProduct     Product?  @relation("ProductForDesign")
+  ratings            Rating[]
+  color              Color     @relation(fields: [colorId], references: [id])
+  product            Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size               Size      @relation(fields: [sizeId], references: [id])
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Link to the Product created specifically for this design when shared (if any)
-  derivedProductId String?      @unique
-  derivedProduct   Product?     @relation(name: "ProductForDesign") // Relation arguments are defined on the Product side
   @@index([userId])
   @@index([productId])
   @@index([colorId])
   @@index([sizeId])
-  @@index([userId, isShared]) // Index for user's shared designs
-  @@index([tags]) // Index for searching by tags
-  @@index([averageRating]) // Index for sorting/filtering by rating
-@@index([userId, updatedAt]) // Index for user designs sorted by update time
+  @@index([userId, isShared])
+  @@index([tags])
+  @@index([averageRating])
+  @@index([userId, updatedAt])
+  @@index([designId])
+  @@index([designFolderKey])
+  @@index([designImageKey])
+  @@index([mockupImageKey])
+  @@index([uploadedLogoKey])
+  @@index([uploadedPatternKey])
+  @@index([migrationStatus])
 }
 
-// --- Enums for SalesGoal ---
+model SalesGoal {
+  id          String     @id @default(uuid())
+  storeId     String
+  metricType  MetricType
+  targetValue Float
+  timePeriod  TimePeriod
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  store       Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, timePeriod])
+}
+
+model GeneralSetting {
+  id                     String   @id @default(cuid())
+  defaultMaxSavedDesigns Int      @default(10)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model MockupJob {
+  id                     String    @id @default(uuid())
+  status                 String    @default("pending")
+  progress               Int       @default(0)
+  userId                 String
+  imageUrl               String
+  canvasImageUrl         String?
+  productId              String?
+  colorId                String?
+  sizeId                 String?
+  description            String?
+  customText             String?
+  shirtColorHex          String?
+  isLogoMode             Boolean?
+  logoScale              Float?
+  logoOffsetX            Float?
+  logoOffsetY            Float?
+  logoTargetPart         String?
+  uploadedLogoUrl        String?
+  uploadedPatternUrl     String?
+  mockupResults          Json?
+  error                  String?
+  designId               String?
+  estimatedTimeRemaining Int?
+  mockupKeys             Json?
+  migrationStatus        String    @default("pending")
+  migratedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId, status])
+  @@index([designId])
+  @@index([migrationStatus])
+  @@index([canvasImageUrl])
+}
+
+model UserFileMetadata {
+  id            String   @id @default(uuid())
+  userId        String
+  fileKey       String
+  fileName      String
+  fileType      String
+  fileSize      Int      @default(0)
+  contentType   String?
+  folderPath    String
+  isPublic      Boolean  @default(false)
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fileType])
+  @@index([folderPath])
+  @@index([createdAt])
+  @@index([fileKey])
+}
+
+model R2MigrationLog {
+  id               String    @id @default(uuid())
+  migrationType    String
+  status           String    @default("pending")
+  totalRecords     Int       @default(0)
+  processedRecords Int       @default(0)
+  failedRecords    Int       @default(0)
+  startTime        DateTime  @default(now())
+  endTime          DateTime?
+  errorMessage     String?
+  metadata         Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  userId           String?
+  user             User?     @relation(fields: [userId], references: [id])
+
+  @@index([migrationType])
+  @@index([status])
+  @@index([startTime])
+  @@index([userId])
+}
+
+model R2FileMetadata {
+  id              String   @id @default(uuid())
+  userId          String
+  fileKey         String
+  fileName        String
+  fileType        String
+  fileSize        BigInt   @default(0)
+  contentType     String?
+  folderPath      String
+  isPublic        Boolean  @default(false)
+  downloadCount   Int      @default(0)
+  oldPath         String?
+  migrationStatus String   @default("pending")
+  checksum        String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fileType])
+  @@index([folderPath])
+  @@index([fileKey])
+  @@index([migrationStatus])
+  @@index([createdAt])
+  @@index([isPublic])
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum MetricType {
   REVENUE
   UNITS_SOLD
@@ -308,36 +450,4 @@ enum TimePeriod {
   DAILY
   WEEKLY
   MONTHLY
-}
-
-// --- Model for Sales Goals ---
-model SalesGoal {
-  id           String     @id @default(uuid())
-  storeId      String
-  store        Store      @relation(fields: [storeId], references: [id], onDelete: Cascade) // Relation to Store
-  metricType   MetricType // e.g., REVENUE or UNITS_SOLD
-  targetValue  Float      // The numeric goal value
-  timePeriod   TimePeriod // e.g., DAILY, WEEKLY, MONTHLY
-  // Optional: Add specific start/end dates if needed, otherwise calculate based on timePeriod and createdAt/updatedAt
-  // startDate    DateTime?
-  // endDate      DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  @@index([storeId])
-  @@index([storeId, timePeriod]) // Index for fetching goals by store and period
-}
-
-// --- Model for General Settings ---
-model GeneralSetting {
-  id                    String @id @default(cuid()) // Unique ID for the settings record
-  defaultMaxSavedDesigns Int    @default(10) // Global default limit for saved designs
-  // Add other global settings here in the future if needed
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  // Ensure only one row can exist for general settings (optional but good practice)
-  // This requires a unique constraint on a field that will always have the same value.
-  // Example: Add a dummy field `singletonKey String @unique @default("SINGLETON")`
-  // Or manage this constraint at the application level (e.g., only ever create/update one record).
 }

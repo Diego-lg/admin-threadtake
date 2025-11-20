@@ -1,93 +1,266 @@
 import { NextResponse } from "next/server";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { v4 as uuidv4 } from "uuid"; // For generating unique keys
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { R2Config } from "@/lib/r2-config";
+import {
+  R2UserStorage,
+  UserFolderPaths,
+  UserFileNaming,
+  AssetType,
+  ExportType,
+  ProfilePictureType,
+  MockupType,
+} from "@/lib/r2-user-storage";
+import { UserFolderService } from "@/services/user-folder-service";
 
-// Ensure environment variables are set
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "threadheaven"; // Default to 'threadheaven' if not set
+/**
+ * Content types supported for upload
+ */
+type ContentType =
+  | "mockups"
+  | "profile-pictures"
+  | "assets"
+  | "exports"
+  | "designs";
 
-if (
-  !R2_ACCESS_KEY_ID ||
-  !R2_SECRET_ACCESS_KEY ||
-  !CLOUDFLARE_ACCOUNT_ID ||
-  !R2_BUCKET_NAME
-) {
-  console.error("Missing required R2 environment variables!");
-  // Optionally throw an error during build/startup if preferred
+/**
+ * Request body interface for upload URL generation
+ */
+interface UploadUrlRequest {
+  contentType: ContentType;
+  filename: string;
+  designId?: string; // For mockups
+  assetType?: AssetType; // For assets
+  exportType?: ExportType; // For exports
+  profileType?: ProfilePictureType; // For profile pictures
+  mockupType?: MockupType; // For mockups
 }
 
-// Configure the S3 client to point to R2
-const s3Client = new S3Client({
-  region: "auto", // R2 specific setting
-  endpoint: `https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID!, // Add non-null assertion or handle potential undefined
-    secretAccessKey: R2_SECRET_ACCESS_KEY!, // Add non-null assertion
-  },
-});
+/**
+ * Response interface for upload URL generation
+ */
+interface UploadUrlResponse {
+  presignedUrl: string;
+  objectKey: string;
+  publicUrl: string;
+  expiresAt: string;
+}
+
 export async function POST(req: Request) {
-  // Basic check for environment variables at runtime
-  if (
-    !R2_ACCESS_KEY_ID ||
-    !R2_SECRET_ACCESS_KEY ||
-    !CLOUDFLARE_ACCOUNT_ID ||
-    !R2_BUCKET_NAME
-  ) {
-    return new NextResponse(
-      "Server configuration error: Missing R2 credentials",
-      { status: 500 }
-    );
-  }
-
   try {
-    // Get folderId, filename, and contentType from the request body
-    const { folderId, filename, contentType } = await req.json();
-
-    if (!folderId) {
-      return new NextResponse("Missing folderId in request body", {
-        status: 400,
-      });
-    }
-    if (!filename) {
-      return new NextResponse("Missing filename in request body", {
-        status: 400,
-      });
+    // 1. Authenticate the user
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    // Sanitize filename: remove potentially harmful characters like '..' or '/'
-    // Replace spaces with underscores, keep extension
-    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const uniqueSuffix = uuidv4().substring(0, 8); // Add short UUID for extra uniqueness
-    const objectKey = `designs/${folderId}/${uniqueSuffix}_${safeFilename}`;
+    const userId = session.user.id;
+
+    // 2. Validate R2 configuration
+    if (!R2Config.validateConfig()) {
+      return new NextResponse(
+        "Server configuration error: R2 settings missing",
+        { status: 500 }
+      );
+    }
+
+    // 3. Parse and validate request body
+    const body: UploadUrlRequest = await req.json();
+    console.log("[R2_GENERATE_UPLOAD_URL] Request body received:", body);
+
+    const {
+      contentType,
+      filename,
+      designId,
+      assetType,
+      exportType,
+      profileType,
+      mockupType,
+    } = body;
+
+    console.log("[R2_GENERATE_UPLOAD_URL] Parsed fields:", {
+      contentType,
+      filename,
+      designId,
+      assetType,
+      exportType,
+      profileType,
+      mockupType,
+    });
+
+    if (!contentType || !filename) {
+      console.log("[R2_GENERATE_UPLOAD_URL] Missing required fields:", {
+        hasContentType: !!contentType,
+        hasFilename: !!filename,
+      });
+      return new NextResponse(
+        "Missing required fields: contentType and filename",
+        { status: 400 }
+      );
+    }
+
+    // Validate content type
+    const validContentTypes: ContentType[] = [
+      "mockups",
+      "profile-pictures",
+      "assets",
+      "exports",
+      "designs",
+    ];
+    if (!validContentTypes.includes(contentType)) {
+      return new NextResponse(
+        `Invalid contentType. Must be one of: ${validContentTypes.join(", ")}`,
+        { status: 400 }
+      );
+    }
+
+    // 4. Ensure user folder structure exists
+    await UserFolderService.ensureUserFolderExists(userId);
+
+    // 5. Generate appropriate path based on content type
+    let pathInfo: { key: string; publicUrl: string };
+
+    switch (contentType) {
+      case "mockups":
+        if (!designId || !mockupType) {
+          return new NextResponse(
+            "Missing required fields for mockups: designId and mockupType",
+            { status: 400 }
+          );
+        }
+        const fileExtension = filename.split(".").pop() || "png";
+        pathInfo = await UserFolderService.getMockupPath(
+          userId,
+          designId,
+          mockupType,
+          fileExtension
+        );
+        break;
+
+      case "profile-pictures":
+        console.log("[R2_GENERATE_UPLOAD_URL] Processing profile picture:", {
+          profileType,
+          filename,
+        });
+        if (!profileType) {
+          console.log(
+            "[R2_GENERATE_UPLOAD_URL] Missing profileType for profile pictures"
+          );
+          return new NextResponse(
+            "Missing required field for profile pictures: profileType",
+            { status: 400 }
+          );
+        }
+        const profileExtension = filename.split(".").pop() || "jpg";
+        console.log("[R2_GENERATE_UPLOAD_URL] Getting profile picture path:", {
+          userId,
+          profileType,
+          profileExtension,
+        });
+        pathInfo = await UserFolderService.getProfilePicturePath(
+          userId,
+          profileType,
+          profileExtension
+        );
+        console.log(
+          "[R2_GENERATE_UPLOAD_URL] Profile picture path generated:",
+          pathInfo
+        );
+        break;
+
+      case "assets":
+        if (!assetType) {
+          return new NextResponse(
+            "Missing required field for assets: assetType",
+            { status: 400 }
+          );
+        }
+        const assetExtension = filename.split(".").pop() || "";
+        pathInfo = await UserFolderService.getAssetPath(
+          userId,
+          assetType,
+          designId,
+          assetExtension
+        );
+        break;
+
+      case "exports":
+        if (!exportType) {
+          return new NextResponse(
+            "Missing required field for exports: exportType",
+            { status: 400 }
+          );
+        }
+        pathInfo = await UserFolderService.getExportPath(
+          userId,
+          exportType,
+          filename
+        );
+        break;
+
+      case "designs":
+        // Legacy support for designs - map to user-specific structure
+        const designExtension = filename.split(".").pop() || "png";
+        const uniqueFilename = UserFileNaming.generateUniqueFilename(
+          filename,
+          "design"
+        );
+        const designKey = `${UserFolderPaths.getUserBasePath(
+          userId
+        )}/designs/${uniqueFilename}`;
+        const config = R2Config.getConfig();
+        pathInfo = {
+          key: designKey,
+          publicUrl: `${config.publicBucketUrl}/${designKey}`,
+        };
+        break;
+
+      default:
+        return new NextResponse("Unsupported content type", { status: 400 });
+    }
+
+    // 6. Generate presigned URL
+    const client = R2Config.getS3Client();
+    const r2Config = R2Config.getConfig();
 
     const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: objectKey,
-      // Use ContentType from the request if provided
-      ContentType: contentType || undefined, // Pass undefined if not provided
-      // ACL is generally not needed/used with R2 presigned URLs for PUT
+      Bucket: r2Config.bucketName,
+      Key: pathInfo.key,
+      ContentType: body.contentType || undefined,
     });
 
-    // Generate the presigned URL for PUT request, valid for 60 seconds
-    const presignedUrl = await getSignedUrl(s3Client, command, {
-      expiresIn: 60, // URL expires in 60 seconds
+    const presignedUrl = await getSignedUrl(client, command, {
+      expiresIn: 300, // 5 minutes
     });
 
-    console.log(`Generated presigned URL for key: ${objectKey}`);
+    // 7. Calculate expiration time
+    const expiresAt = new Date(Date.now() + 300 * 1000).toISOString();
 
-    // Return the URL and the key to the frontend
-    return NextResponse.json({
-      presignedUrl,
-      objectKey, // The frontend needs this to construct the final public URL
-    });
-  } catch (error) {
-    console.error("Error generating R2 presigned URL:", error);
-    return new NextResponse(
-      "Internal Server Error: Could not generate upload URL",
-      { status: 500 }
+    console.log(
+      `[R2_GENERATE_UPLOAD_URL] Generated presigned URL for user ${userId}:`,
+      {
+        contentType,
+        key: pathInfo.key,
+        filename,
+        expiresAt,
+      }
     );
+
+    // 8. Return response
+    const response: UploadUrlResponse = {
+      presignedUrl,
+      objectKey: pathInfo.key,
+      publicUrl: pathInfo.publicUrl,
+      expiresAt,
+    };
+
+    return NextResponse.json(response);
+  } catch (error: any) {
+    console.error("[R2_GENERATE_UPLOAD_URL] Error:", error);
+    return new NextResponse(`Internal Server Error: ${error.message}`, {
+      status: 500,
+    });
   }
 }
