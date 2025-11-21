@@ -27,6 +27,15 @@ export async function middleware(req: NextRequest) {
   ); // <-- ADD THIS LOG
 
   try {
+    // Skip WebSocket upgrade requests to prevent bind context errors
+    const upgrade = req.headers.get("upgrade");
+    if (upgrade?.toLowerCase() === "websocket") {
+      console.log(
+        `[Middleware] Skipping WebSocket upgrade request for ${req.nextUrl.pathname}`
+      );
+      return NextResponse.next();
+    }
+
     const origin = req.headers.get("origin");
     const pathname = req.nextUrl.pathname;
     const isApiRoute = pathname.startsWith("/api/");
