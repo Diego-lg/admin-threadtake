@@ -35,6 +35,7 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
+  Eye,
 } from "lucide-react";
 
 /**
@@ -109,6 +110,15 @@ export function R2ManagerClient() {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Preview dialog state
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{
+    key: string;
+    url: string;
+    sizeFormatted: string;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   // Admin mode to show all files (not just user-specific)
   const [showAllFiles, setShowAllFiles] = useState(false);
 
@@ -134,36 +144,39 @@ export function R2ManagerClient() {
   }, [showAllFiles]);
 
   // Fetch files
-  const fetchFiles = useCallback(async (continuationToken?: string) => {
-    try {
-      setFilesLoading(true);
-      const url = new URL("/api/r2/manager", window.location.origin);
-      url.searchParams.set("action", "list");
-      url.searchParams.set("maxKeys", "50");
-      url.searchParams.set("showAll", showAllFiles.toString());
-      if (continuationToken) {
-        url.searchParams.set("token", continuationToken);
-      }
+  const fetchFiles = useCallback(
+    async (continuationToken?: string) => {
+      try {
+        setFilesLoading(true);
+        const url = new URL("/api/r2/manager", window.location.origin);
+        url.searchParams.set("action", "list");
+        url.searchParams.set("maxKeys", "50");
+        url.searchParams.set("showAll", showAllFiles.toString());
+        if (continuationToken) {
+          url.searchParams.set("token", continuationToken);
+        }
 
-      const response = await fetch(url.toString());
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch files");
-      }
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to fetch files");
+        }
 
-      if (continuationToken) {
-        setFiles((prev) => [...prev, ...data.data.files]);
-      } else {
-        setFiles(data.data.files);
+        if (continuationToken) {
+          setFiles((prev) => [...prev, ...data.data.files]);
+        } else {
+          setFiles(data.data.files);
+        }
+        setFilesToken(data.data.nextToken);
+        setFilesTruncated(data.data.isTruncated);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setFilesLoading(false);
       }
-      setFilesToken(data.data.nextToken);
-      setFilesTruncated(data.data.isTruncated);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setFilesLoading(false);
-    }
-  }, []);
+    },
+    [showAllFiles],
+  );
 
   // Initial load
   useEffect(() => {
@@ -561,27 +574,70 @@ export function R2ManagerClient() {
                         {new Date(file.lastModified).toLocaleString()}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={async () => {
-                            if (confirm(`Delete ${file.key}?`)) {
-                              await fetch("/api/r2/manager", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  action: "delete-file",
-                                  fileKey: file.key,
-                                }),
-                              });
-                              fetchStats();
-                              setFiles([]);
-                              fetchFiles();
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={async () => {
+                              setPreviewLoading(true);
+                              try {
+                                const url = new URL(
+                                  "/api/r2/manager",
+                                  window.location.origin,
+                                );
+                                url.searchParams.set("action", "preview");
+                                url.searchParams.set("key", file.key);
+                                url.searchParams.set(
+                                  "showAll",
+                                  showAllFiles.toString(),
+                                );
+                                const response = await fetch(url.toString());
+                                const data = await response.json();
+                                if (!response.ok) {
+                                  throw new Error(
+                                    data.error || "Failed to get preview",
+                                  );
+                                }
+                                setPreviewFile({
+                                  key: file.key,
+                                  url: data.data.url,
+                                  sizeFormatted: file.sizeFormatted,
+                                });
+                                setPreviewDialogOpen(true);
+                              } catch (err: any) {
+                                setError(err.message);
+                              } finally {
+                                setPreviewLoading(false);
+                              }
+                            }}
+                            disabled={previewLoading}
+                          >
+                            <Eye className="w-4 h-4 text-blue-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={async () => {
+                              if (confirm(`Delete ${file.key}?`)) {
+                                await fetch("/api/r2/manager", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    action: "delete-file",
+                                    fileKey: file.key,
+                                  }),
+                                });
+                                fetchStats();
+                                setFiles([]);
+                                fetchFiles();
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -790,6 +846,67 @@ export function R2ManagerClient() {
               ) : (
                 "Delete"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Preview File</DialogTitle>
+            <DialogDescription>
+              {previewFile?.key}
+              <br />
+              <span className="text-sm text-muted-foreground">
+                Size: {previewFile?.sizeFormatted}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center h-[60vh] bg-muted rounded-lg overflow-hidden p-4">
+            {previewLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>Loading preview...</span>
+              </div>
+            ) : previewFile?.url ? (
+              // Check if it's an image for proper fitting
+              previewFile.key.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)$/i) ? (
+                <img
+                  src={previewFile.url}
+                  alt={previewFile.key}
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <iframe
+                  src={previewFile.url}
+                  className="w-full h-full border-0"
+                  title="File Preview"
+                />
+              )
+            ) : (
+              <span className="text-muted-foreground">
+                No preview available
+              </span>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPreviewDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                if (previewFile?.url) {
+                  window.open(previewFile.url, "_blank");
+                }
+              }}
+            >
+              Open in New Tab
             </Button>
           </DialogFooter>
         </DialogContent>

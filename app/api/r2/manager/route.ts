@@ -92,6 +92,43 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      case "preview": {
+        const { R2Config } = await import("@/lib/r2-config");
+        const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+        const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+
+        const fileKey = searchParams.get("key");
+        if (!fileKey) {
+          return NextResponse.json(
+            { error: "fileKey is required" },
+            { status: 400 },
+          );
+        }
+
+        // If showAll is false, verify ownership
+        if (!showAll && !fileKey.startsWith(`users/${userId}`)) {
+          return NextResponse.json({ error: "Access denied" }, { status: 403 });
+        }
+
+        const config = R2Config.getConfig();
+        const client = R2Config.getS3Client();
+
+        const command = new GetObjectCommand({
+          Bucket: config.bucketName,
+          Key: fileKey,
+        });
+
+        // Generate signed URL valid for 1 hour
+        const signedUrl = await getSignedUrl(client, command, {
+          expiresIn: 3600,
+        });
+
+        return NextResponse.json({
+          success: true,
+          data: { url: signedUrl, key: fileKey },
+        });
+      }
+
       case "user-files": {
         const limit = parseInt(searchParams.get("limit") || "50");
         const offset = parseInt(searchParams.get("offset") || "0");
