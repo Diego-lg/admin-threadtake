@@ -5,6 +5,9 @@ import GoogleProvider from "next-auth/providers/google";
 import prismadb from "@/lib/prismadb";
 import { UserRole } from "@prisma/client";
 
+// Admin email restriction - only this email can access the backend
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase();
+
 // Define authOptions here
 export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prismadb),
@@ -70,6 +73,16 @@ export const authOptions: AuthOptions = {
 
       // On initial sign in, `user` object is present.
       if (user) {
+        // Admin email restriction - only allow specific email to sign in
+        if (ADMIN_EMAIL && user.email?.toLowerCase() !== ADMIN_EMAIL) {
+          console.warn(
+            `[NextAuth JWT Callback] Unauthorized sign-in attempt from email: ${user.email}`,
+          );
+          throw new Error(
+            "Unauthorized email - only threadtake@gmail.com is allowed to access this backend.",
+          );
+        }
+
         // Find the user in the database. The adapter should have already created it.
         const dbUser = await prismadb.user.findUnique({
           where: { email: user.email! },
