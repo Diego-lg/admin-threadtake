@@ -184,7 +184,7 @@ export async function updateStore(
 }
 
 /**
- * Delete a store
+ * Delete a store (requires ownership)
  */
 export async function deleteStore(storeId: string): Promise<void> {
   try {
@@ -275,6 +275,104 @@ export async function deleteStore(storeId: string): Promise<void> {
     revalidatePath("/");
   } catch (error) {
     console.error("Error deleting store:", error);
+    throw error;
+  }
+}
+
+/**
+ * Admin delete a store (bypasses ownership check, requires admin role)
+ */
+export async function adminDeleteStore(storeId: string): Promise<void> {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    if (!storeId) {
+      throw new Error("Store ID is required");
+    }
+
+    // Verify admin role
+    const user = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (user?.role !== "ADMIN") {
+      throw new Error("Forbidden: Admin access required");
+    }
+
+    // Delete all related data in transaction (no ownership check)
+    await prismadb.$transaction(async (tx) => {
+      // Delete order items and orders
+      const orders = await tx.order.findMany({
+        where: { storeId },
+        select: { id: true },
+      });
+
+      for (const order of orders) {
+        await tx.orderItem.deleteMany({
+          where: { orderId: order.id },
+        });
+      }
+
+      await tx.order.deleteMany({
+        where: { storeId },
+      });
+
+      // Delete products and images
+      const products = await tx.product.findMany({
+        where: { storeId },
+        select: { id: true },
+      });
+
+      for (const product of products) {
+        await tx.image.deleteMany({
+          where: { productId: product.id },
+        });
+      }
+
+      await tx.product.deleteMany({
+        where: { storeId },
+      });
+
+      // Delete categories
+      await tx.category.deleteMany({
+        where: { storeId },
+      });
+
+      // Delete billboards
+      await tx.billboard.deleteMany({
+        where: { storeId },
+      });
+
+      // Delete colors and sizes
+      await tx.color.deleteMany({
+        where: { storeId },
+      });
+
+      await tx.size.deleteMany({
+        where: { storeId },
+      });
+
+      // Delete sales goals
+      await tx.salesGoal.deleteMany({
+        where: { storeId },
+      });
+
+      // Finally delete the store
+      await tx.store.delete({
+        where: { id: storeId },
+      });
+    });
+
+    revalidatePath("/");
+    revalidatePath("/admin/stores");
+  } catch (error) {
+    console.error("Error admin deleting store:", error);
     throw error;
   }
 }

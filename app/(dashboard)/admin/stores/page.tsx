@@ -24,8 +24,6 @@ const StoresPage = async () => {
     id: store.id,
     name: store.name,
     userId: store.userId,
-    userName: "N/A",
-    userEmail: "N/A",
     createdAt: format(store.createdAt, "MMMM do, yyyy"),
     updatedAt: format(store.updatedAt, "MMMM do, yyyy"),
     productCount: store._count?.products ?? 0,

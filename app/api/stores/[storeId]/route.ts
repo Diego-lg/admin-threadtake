@@ -2,10 +2,11 @@ import prismadb from "@/lib/prismadb";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { deleteStore, adminDeleteStore } from "@/actions/store-manager";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ storeId: string }> }
+  { params }: { params: Promise<{ storeId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -42,7 +43,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ storeId: string }> }
+  { params }: { params: Promise<{ storeId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -57,15 +58,26 @@ export async function DELETE(
       return new NextResponse("Store ID is required", { status: 400 });
     }
 
-    const store = await prismadb.store.deleteMany({
-      where: {
-        id: storeId,
-        userId,
-      },
+    // Get the user to check if admin
+    const user = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
     });
-    return NextResponse.json(store);
+
+    const isAdmin = user?.role === "ADMIN";
+
+    // Use admin delete function if admin, otherwise use regular delete
+    if (isAdmin) {
+      await adminDeleteStore(storeId);
+    } else {
+      await deleteStore(storeId);
+    }
+
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.log("[STORE_DELETE", error);
-    return new NextResponse("Internal error", { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to delete store";
+    return new NextResponse(errorMessage, { status: 500 });
   }
 }
