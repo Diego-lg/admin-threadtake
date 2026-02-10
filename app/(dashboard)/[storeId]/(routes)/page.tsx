@@ -18,6 +18,7 @@ import Link from "next/link";
 import prismadb from "@/lib/prismadb"; // Import prismadb
 import { Product, Image as PrismaImage } from "@prisma/client"; // Import Prisma types
 import Image from "next/image"; // Import Next Image for optimized images
+import { ArrowLeft, Store } from "lucide-react";
 
 // Interface for combined product data including sales
 interface ProductWithSales extends Product {
@@ -73,7 +74,7 @@ const DashboardPage: React.FC<DashboardPageProps> = async ({ params }) => {
     }); // Fetch fresh data
     if (!performanceRes.ok) {
       console.error(
-        `Failed to fetch product performance: ${performanceRes.statusText}`
+        `Failed to fetch product performance: ${performanceRes.statusText}`,
       );
       // Handle error - maybe show fewer products or a message
     } else {
@@ -82,7 +83,7 @@ const DashboardPage: React.FC<DashboardPageProps> = async ({ params }) => {
 
       // 3. Combine data
       const performanceMap = new Map(
-        performanceData.map((p) => [p.id, p.totalUnitsSold])
+        performanceData.map((p) => [p.id, p.totalUnitsSold]),
       );
 
       const combinedProducts = products.map((product) => ({
@@ -104,13 +105,23 @@ const DashboardPage: React.FC<DashboardPageProps> = async ({ params }) => {
     <div className="flex-col">
       <div className="flex-1 space-y-6 p-4 md:p-6 lg:p-8">
         {/* Welcome Header */}
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
-            Welcome back, Admin!
-          </h2>
-          <p className="text-muted-foreground">
-            Here's what's happening with your store today.
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">
+              Welcome back, Admin!
+            </h2>
+            <p className="text-muted-foreground">
+              Here's what's happening with your store today.
+            </p>
+          </div>
+          <Link
+            href="/"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <Store className="h-4 w-4" />
+            Back to Store Manager
+          </Link>
         </div>
 
         <Separator />
@@ -226,7 +237,7 @@ const DashboardPage: React.FC<DashboardPageProps> = async ({ params }) => {
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {formatter.format(
-                            parseFloat(product.price.toString())
+                            parseFloat(product.price.toString()),
                           )}{" "}
                           {/* Format price */}
                         </p>
