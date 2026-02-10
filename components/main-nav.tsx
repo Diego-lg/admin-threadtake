@@ -60,6 +60,11 @@ export function MainNav({ className }: React.HTMLAttributes<HTMLElement>) {
       active: pathname === `/${params.storeId}/admin/users`, // Active state check
     },
     {
+      href: `/admin/stores`, // Link to the stores admin page
+      label: "Stores",
+      active: pathname === `/admin/stores`, // Active state check
+    },
+    {
       href: `/${params.storeId}/settings`,
       label: "Settings",
       active: pathname === `/${params.storeId}/settings`,
@@ -76,7 +81,7 @@ export function MainNav({ className }: React.HTMLAttributes<HTMLElement>) {
             "text-sm font-medium transition-colors hover:text-primary",
             route.active
               ? "text-black dark:text-white"
-              : "text-muted-foreground"
+              : "text-muted-foreground",
           )}
         >
           {route.label}

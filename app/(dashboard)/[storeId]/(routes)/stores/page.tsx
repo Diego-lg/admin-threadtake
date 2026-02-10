@@ -9,6 +9,7 @@ import {
   Trash2,
   Package,
   ShoppingCart,
+  Edit2,
   ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
