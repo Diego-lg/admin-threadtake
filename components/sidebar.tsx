@@ -15,6 +15,7 @@ import {
   Palette, // Using Palette icon for Generator Base
   Droplets, // Added Droplets icon for Colors
   Ruler, // Added Ruler icon for Sizes
+  Cloud, // Added Cloud icon for R2 Manager
 } from "lucide-react";
 
 interface SidebarProps {
@@ -30,7 +31,7 @@ const Sidebar = ({ params }: SidebarProps) => {
     <div
       className={cn(
         "h-screen bg-white dark:bg-black text-black dark:text-white flex flex-col transition-all duration-300 ease-in-out sticky top-0", // Updated background and text
-        isExpanded ? "w-64" : "w-20" // Adjust width based on state
+        isExpanded ? "w-64" : "w-20", // Adjust width based on state
       )}
     >
       {/* Header */}
@@ -50,7 +51,7 @@ const Sidebar = ({ params }: SidebarProps) => {
           <ChevronLeft
             className={cn(
               "h-6 w-6 transition-transform duration-300",
-              !isExpanded && "rotate-180"
+              !isExpanded && "rotate-180",
             )}
           />
         </button>
@@ -132,6 +133,14 @@ const Sidebar = ({ params }: SidebarProps) => {
         >
           <Code className="mr-3 h-5 w-5" /> {/* Updated icon */}
           {isExpanded && <span>API</span>} {/* Updated text */}
+        </Link>
+        {/* R2 Storage Manager Link */}
+        <Link
+          href={`/${storeId}/r2-manager`} // Link to R2 storage manager
+          className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <Cloud className="mr-3 h-5 w-5" />
+          {isExpanded && <span>R2 Storage</span>}
         </Link>
       </nav>
 

@@ -470,3 +470,16 @@ model FrontendConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// R2 Audit Log Model
+model R2AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  details   Json     @default("{}")
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}

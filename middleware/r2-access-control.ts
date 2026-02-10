@@ -54,7 +54,7 @@ let currentConfig: R2AccessControlConfig = { ...defaultConfig };
  * @param config Configuration options
  */
 export function configureR2AccessControl(
-  config: Partial<R2AccessControlConfig>
+  config: Partial<R2AccessControlConfig>,
 ): void {
   currentConfig = { ...currentConfig, ...config };
 }
@@ -80,7 +80,7 @@ function extractResourcePath(request: NextRequest): string {
     pathname.startsWith("/api/r2/user/files/")
   ) {
     console.log(
-      "[R2_ACCESS_CONTROL] User files endpoint detected, returning user-files path"
+      "[R2_ACCESS_CONTROL] User files endpoint detected, returning user-files path",
     );
     return "user-files";
   }
@@ -106,20 +106,20 @@ function extractResourcePath(request: NextRequest): string {
     "[R2_ACCESS_CONTROL] Path parts:",
     pathParts,
     "r2Index:",
-    r2Index
+    r2Index,
   );
 
   if (r2Index !== -1 && pathParts.length > r2Index + 3) {
     const extractedPath = pathParts.slice(r2Index + 3).join("/");
     console.log(
       "[R2_ACCESS_CONTROL] Extracted path from pathname:",
-      extractedPath
+      extractedPath,
     );
     return extractedPath;
   }
 
   console.log(
-    "[R2_ACCESS_CONTROL] No resource path found, returning empty string"
+    "[R2_ACCESS_CONTROL] No resource path found, returning empty string",
   );
   return "";
 }
@@ -130,7 +130,7 @@ function extractResourcePath(request: NextRequest): string {
  * @returns Operation type
  */
 function extractOperationType(
-  request: NextRequest
+  request: NextRequest,
 ): "read" | "write" | "delete" | "list" {
   const method = request.method;
   const url = new URL(request.url);
@@ -193,7 +193,7 @@ function getClientIPAddress(request: NextRequest): string {
 function createFileOperationContext(
   request: NextRequest,
   userId: string,
-  userRole: UserRole
+  userRole: UserRole,
 ): FileOperationContext {
   return {
     userId,
@@ -226,7 +226,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
  */
 function handleRateLimiting(
   request: NextRequest,
-  userId: string
+  userId: string,
 ): NextResponse | null {
   if (!currentConfig.enableRateLimiting) {
     return null;
@@ -235,7 +235,7 @@ function handleRateLimiting(
   const identifier = userId || getClientIPAddress(request);
   const isRateLimited = R2Security.checkRateLimit(
     identifier,
-    currentConfig.rateLimitConfig
+    currentConfig.rateLimitConfig,
   );
 
   if (isRateLimited) {
@@ -259,11 +259,11 @@ function handleRateLimiting(
             : (Date.now() + 60000).toString(),
           "Retry-After": rateLimitStatus?.resetTime
             ? Math.ceil(
-                (rateLimitStatus.resetTime - Date.now()) / 1000
+                (rateLimitStatus.resetTime - Date.now()) / 1000,
               ).toString()
             : "60",
         },
-      }
+      },
     );
   }
 
@@ -276,7 +276,7 @@ function handleRateLimiting(
  * @returns Validation result
  */
 function validateUserAccess(
-  context: FileOperationContext
+  context: FileOperationContext,
 ): SecurityValidationResult {
   // Check if user isolation is enabled
   if (!currentConfig.enableUserIsolation) {
@@ -320,7 +320,7 @@ function checkAdminOverride(userRole: UserRole, operation: string): boolean {
  * @returns NextResponse or null if request should proceed
  */
 export async function r2AccessControlMiddleware(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse | null> {
   // Only apply to R2 API routes
   const url = new URL(request.url);
@@ -339,7 +339,7 @@ export async function r2AccessControlMiddleware(
     if (!token || !token.id) {
       const response = NextResponse.json(
         { error: "Unauthenticated", message: "Authentication required" },
-        { status: 401 }
+        { status: 401 },
       );
       return applySecurityHeaders(response);
     }
@@ -383,11 +383,12 @@ export async function r2AccessControlMiddleware(
       "/api/r2/upload-batch",
       "/api/r2/folder-recovery",
       "/api/r2/conflicts",
+      "/api/r2/manager",
     ].some((path) => url.pathname.startsWith(path));
 
     console.log(
       "[R2_ACCESS_CONTROL] Skip path validation:",
-      skipPathValidation
+      skipPathValidation,
     );
 
     if (!skipPathValidation) {
@@ -406,7 +407,7 @@ export async function r2AccessControlMiddleware(
             message: pathValidation.errors.join(", "),
             riskLevel: pathValidation.riskLevel,
           },
-          { status: 400 }
+          { status: 400 },
         );
 
         // Log path validation failure
@@ -414,7 +415,7 @@ export async function r2AccessControlMiddleware(
           R2AuditLogger.log(
             context,
             "blocked",
-            `Invalid resource path: ${pathValidation.errors.join(", ")}`
+            `Invalid resource path: ${pathValidation.errors.join(", ")}`,
           );
         }
 
@@ -435,11 +436,12 @@ export async function r2AccessControlMiddleware(
       "/api/r2/upload-batch",
       "/api/r2/folder-recovery",
       "/api/r2/conflicts",
+      "/api/r2/manager",
     ].some((path) => requestUrl2.pathname.startsWith(path));
 
     console.log(
       "[R2_ACCESS_CONTROL] Skip resource validation:",
-      skipResourceValidation
+      skipResourceValidation,
     );
 
     let accessValidation: SecurityValidationResult = {
@@ -478,7 +480,7 @@ export async function r2AccessControlMiddleware(
           message: accessValidation.errors.join(", "),
           riskLevel: accessValidation.riskLevel,
         },
-        { status: 403 }
+        { status: 403 },
       );
 
       // Log access denied
@@ -486,7 +488,7 @@ export async function r2AccessControlMiddleware(
         R2AuditLogger.log(
           context,
           "blocked",
-          `Access denied: ${accessValidation.errors.join(", ")}`
+          `Access denied: ${accessValidation.errors.join(", ")}`,
         );
       }
 
@@ -525,7 +527,7 @@ export async function r2AccessControlMiddleware(
       R2AuditLogger.log(
         context,
         "failure",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
     }
 
@@ -534,7 +536,7 @@ export async function r2AccessControlMiddleware(
       R2SecurityMonitor.processOperation(
         context,
         "failure",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
     }
 
@@ -543,7 +545,7 @@ export async function r2AccessControlMiddleware(
         error: "Internal server error",
         message: "An error occurred while processing your request",
       },
-      { status: 500 }
+      { status: 500 },
     );
     return applySecurityHeaders(response);
   }
@@ -555,7 +557,7 @@ export async function r2AccessControlMiddleware(
  * @returns NextResponse or null
  */
 export function withR2AccessControl(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse | null> {
   return r2AccessControlMiddleware(request);
 }
