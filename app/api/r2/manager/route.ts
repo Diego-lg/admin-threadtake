@@ -20,13 +20,19 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id;
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action") || "stats";
+    const showAll = searchParams.get("showAll") === "true";
 
     switch (action) {
       case "stats": {
+        // If showAll is true, get stats for all files (no user prefix filter)
         const [r2Stats, dbSummary, recommendations] = await Promise.all([
-          R2BucketManager.getStorageStats(userId),
-          R2FileDatabaseManager.getUserStorageSummary(userId),
-          R2BucketManager.getCleanupRecommendations(userId),
+          R2BucketManager.getStorageStats(showAll ? undefined : userId),
+          showAll
+            ? { totalFiles: 0, activeFiles: 0, totalSize: 0 }
+            : R2FileDatabaseManager.getUserStorageSummary(userId),
+          R2BucketManager.getCleanupRecommendations(
+            showAll ? undefined : userId,
+          ),
         ]);
 
         return NextResponse.json({
@@ -36,12 +42,16 @@ export async function GET(request: NextRequest) {
             dbSummary,
             recommendations,
             bucketStatus: R2BucketManager.getBucketStatus(),
+            showAll,
           },
         });
       }
 
       case "list": {
-        const prefix = searchParams.get("prefix") || `users/${userId}`;
+        // If showAll is true, list all files (no prefix filter)
+        const prefix = showAll
+          ? ""
+          : searchParams.get("prefix") || `users/${userId}`;
         const maxKeys = parseInt(searchParams.get("maxKeys") || "100");
         const continuationToken = searchParams.get("token") || undefined;
 
@@ -60,6 +70,7 @@ export async function GET(request: NextRequest) {
             })),
             nextToken: result.nextToken,
             isTruncated: result.isTruncated,
+            showAll,
           },
         });
       }

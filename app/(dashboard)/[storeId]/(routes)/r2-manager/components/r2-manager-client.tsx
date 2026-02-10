@@ -64,6 +64,7 @@ export function R2ManagerClient() {
       bucketName: string;
       publicBucketUrl: string;
     };
+    showAll?: boolean;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,12 +109,18 @@ export function R2ManagerClient() {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Admin mode to show all files (not just user-specific)
+  const [showAllFiles, setShowAllFiles] = useState(false);
+
   // Fetch initial stats
   const fetchStats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch("/api/r2/manager?action=stats");
+      const url = new URL("/api/r2/manager", window.location.origin);
+      url.searchParams.set("action", "stats");
+      url.searchParams.set("showAll", showAllFiles.toString());
+      const response = await fetch(url.toString());
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch stats");
@@ -124,7 +131,7 @@ export function R2ManagerClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showAllFiles]);
 
   // Fetch files
   const fetchFiles = useCallback(async (continuationToken?: string) => {
@@ -133,6 +140,7 @@ export function R2ManagerClient() {
       const url = new URL("/api/r2/manager", window.location.origin);
       url.searchParams.set("action", "list");
       url.searchParams.set("maxKeys", "50");
+      url.searchParams.set("showAll", showAllFiles.toString());
       if (continuationToken) {
         url.searchParams.set("token", continuationToken);
       }
@@ -287,7 +295,22 @@ export function R2ManagerClient() {
           title="R2 Storage Manager"
           description="Manage your Cloudflare R2 bucket files"
         />
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Show All Files Toggle */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showAllFiles}
+              onChange={(e) => {
+                setShowAllFiles(e.target.checked);
+                fetchStats();
+                setFiles([]);
+                fetchFiles();
+              }}
+              className="rounded border-gray-300"
+            />
+            Show All Files
+          </label>
           <Button variant="outline" onClick={fetchStats} disabled={loading}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
@@ -311,6 +334,11 @@ export function R2ManagerClient() {
             <CardTitle className="text-lg flex items-center gap-2">
               <HardDrive className="w-5 h-5" />
               Bucket Status
+              {stats?.showAll && (
+                <Badge variant="secondary" className="ml-2">
+                  Showing All Files
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
