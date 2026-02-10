@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed:frontend-config": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-frontend-config.ts"
+  },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-frontend-config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.782.0",
@@ -71,6 +75,7 @@
     "postcss": "^8",
     "prisma": "^6.3.1",
     "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "overrides": {

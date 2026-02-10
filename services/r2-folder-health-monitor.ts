@@ -97,7 +97,7 @@ export class R2FolderHealthMonitor {
       let processedUsers = 0;
 
       console.log(
-        `[FOLDER_HEALTH_MONITOR] Checking health for ${totalUsers} users`
+        `[FOLDER_HEALTH_MONITOR] Checking health for ${totalUsers} users`,
       );
 
       for (const user of users) {
@@ -113,7 +113,7 @@ export class R2FolderHealthMonitor {
                 missingFolders: healthStatus.missingFolders,
                 corruptedFolders: healthStatus.corruptedFolders,
                 issuesCount: healthStatus.issues.length,
-              }
+              },
             );
 
             // Attempt automatic recovery for recoverable issues
@@ -125,7 +125,7 @@ export class R2FolderHealthMonitor {
         } catch (error) {
           console.error(
             `[FOLDER_HEALTH_MONITOR] Error checking health for user ${user.id}:`,
-            error
+            error,
           );
         }
       }
@@ -136,12 +136,12 @@ export class R2FolderHealthMonitor {
 
       const duration = Date.now() - startTime;
       console.log(
-        `[FOLDER_HEALTH_MONITOR] Health check completed in ${duration}ms for ${totalUsers} users`
+        `[FOLDER_HEALTH_MONITOR] Health check completed in ${duration}ms for ${totalUsers} users`,
       );
     } catch (error) {
       console.error(
         "[FOLDER_HEALTH_MONITOR] Error during health check:",
-        error
+        error,
       );
 
       const taskStatus = this.monitoringTasks.get(taskId);
@@ -157,7 +157,9 @@ export class R2FolderHealthMonitor {
   /**
    * Get active users from database
    */
-  private async getActiveUsers(): Promise<{ id: string; email: string }[]> {
+  private async getActiveUsers(): Promise<
+    { id: string; email: string | null }[]
+  > {
     try {
       const users = await prismadb.user.findMany({
         where: {
@@ -177,7 +179,7 @@ export class R2FolderHealthMonitor {
     } catch (error) {
       console.error(
         "[FOLDER_HEALTH_MONITOR] Error getting active users:",
-        error
+        error,
       );
       return [];
     }
@@ -340,12 +342,12 @@ export class R2FolderHealthMonitor {
    */
   private async attemptAutomaticRecovery(
     userId: string,
-    healthStatus: FolderHealthStatus
+    healthStatus: FolderHealthStatus,
   ): Promise<void> {
     if (healthStatus.missingFolders.length > 0) {
       try {
         console.log(
-          `[FOLDER_HEALTH_MONITOR] Attempting automatic recovery for user ${userId}`
+          `[FOLDER_HEALTH_MONITOR] Attempting automatic recovery for user ${userId}`,
         );
 
         // Try to create missing folders
@@ -355,12 +357,12 @@ export class R2FolderHealthMonitor {
             userId,
             operation: "automatic_recovery",
             startTime: new Date(),
-          }
+          },
         );
 
         if (recoveryResult.success) {
           console.log(
-            `[FOLDER_HEALTH_MONITOR] Automatic recovery successful for user ${userId}`
+            `[FOLDER_HEALTH_MONITOR] Automatic recovery successful for user ${userId}`,
           );
 
           // Re-check health after recovery
@@ -370,13 +372,13 @@ export class R2FolderHealthMonitor {
         } else {
           console.error(
             `[FOLDER_HEALTH_MONITOR] Automatic recovery failed for user ${userId}:`,
-            recoveryResult.error
+            recoveryResult.error,
           );
         }
       } catch (error) {
         console.error(
           `[FOLDER_HEALTH_MONITOR] Error during automatic recovery for user ${userId}:`,
-          error
+          error,
         );
       }
     }
@@ -427,7 +429,7 @@ export class R2FolderHealthMonitor {
   } {
     const totalUsers = this.healthChecks.size;
     const healthyUsers = Array.from(this.healthChecks.values()).filter(
-      (status) => status.isHealthy
+      (status) => status.isHealthy,
     ).length;
     const usersWithIssues = totalUsers - healthyUsers;
 
@@ -436,7 +438,7 @@ export class R2FolderHealthMonitor {
         ? Array.from(this.healthChecks.values()).reduce(
             (latest, status) =>
               status.lastChecked > latest ? status.lastChecked : latest,
-            new Date(0)
+            new Date(0),
           )
         : null;
 
@@ -455,7 +457,7 @@ export class R2FolderHealthMonitor {
    */
   async forceHealthCheck(userId: string): Promise<FolderHealthStatus> {
     console.log(
-      `[FOLDER_HEALTH_MONITOR] Forcing health check for user ${userId}`
+      `[FOLDER_HEALTH_MONITOR] Forcing health check for user ${userId}`,
     );
     return await this.checkUserFolderHealth(userId);
   }
@@ -498,7 +500,7 @@ export class R2FolderHealthMonitor {
       user.issues.map((issue) => ({
         userId: user.userId,
         ...issue,
-      }))
+      })),
     );
 
     const recommendations = this.generateRecommendations(issues);
@@ -517,30 +519,30 @@ export class R2FolderHealthMonitor {
     const recommendations: string[] = [];
 
     const missingFolderCount = issues.filter(
-      (i) => i.type === FolderErrorType.MISSING_USER_FOLDER
+      (i) => i.type === FolderErrorType.MISSING_USER_FOLDER,
     ).length;
     const permissionCount = issues.filter(
-      (i) => i.type === FolderErrorType.PERMISSION_DENIED
+      (i) => i.type === FolderErrorType.PERMISSION_DENIED,
     ).length;
     const corruptedCount = issues.filter(
-      (i) => i.type === FolderErrorType.CORRUPTED_STRUCTURE
+      (i) => i.type === FolderErrorType.CORRUPTED_STRUCTURE,
     ).length;
 
     if (missingFolderCount > 0) {
       recommendations.push(
-        `${missingFolderCount} users have missing folders - consider running bulk folder creation`
+        `${missingFolderCount} users have missing folders - consider running bulk folder creation`,
       );
     }
 
     if (permissionCount > 0) {
       recommendations.push(
-        `${permissionCount} users have permission issues - review R2 access policies`
+        `${permissionCount} users have permission issues - review R2 access policies`,
       );
     }
 
     if (corruptedCount > 0) {
       recommendations.push(
-        `${corruptedCount} users have corrupted folder structures - manual intervention may be required`
+        `${corruptedCount} users have corrupted folder structures - manual intervention may be required`,
       );
     }
 

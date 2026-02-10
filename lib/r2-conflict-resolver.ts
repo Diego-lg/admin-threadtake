@@ -192,7 +192,11 @@ export class R2ConflictResolver {
         `[R2_CONFLICT_RESOLVER] Error detecting conflict for ${filename}:`,
         error
       );
-      throw new Error(`Failed to detect conflict: ${error.message}`);
+      throw new Error(
+        `Failed to detect conflict: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 

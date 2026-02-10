@@ -58,7 +58,7 @@ export class R2Queries {
    */
   static async getUserProfilePicture(
     prisma: PrismaClient,
-    userId: string
+    userId: string,
   ): Promise<FileUrlResult | null> {
     try {
       // Get user with both new and legacy fields
@@ -128,7 +128,7 @@ export class R2Queries {
    */
   static async getDesignFiles(
     prisma: PrismaClient,
-    designId: string
+    designId: string,
   ): Promise<DesignFileInfo | null> {
     try {
       const design = await prisma.savedDesign.findUnique({
@@ -214,7 +214,7 @@ export class R2Queries {
    */
   static async getMockupJobFiles(
     prisma: PrismaClient,
-    jobId: string
+    jobId: string,
   ): Promise<{
     id: string;
     imageUrl?: string;
@@ -299,7 +299,7 @@ export class R2Queries {
       limit?: number;
       offset?: number;
       includeLegacy?: boolean;
-    } = {}
+    } = {},
   ): Promise<{
     files: UserFileInfo[];
     totalCount: number;
@@ -404,7 +404,7 @@ export class R2Queries {
       uploadedPatternKey?: string;
       assetKeys?: any;
       mockupKeys?: any;
-    }
+    },
   ): Promise<void> {
     try {
       await prisma.savedDesign.update({
@@ -435,7 +435,7 @@ export class R2Queries {
     prisma: PrismaClient,
     userId: string,
     profilePictureKey: string,
-    keepHistory: boolean = true
+    keepHistory: boolean = true,
   ): Promise<void> {
     try {
       const user = await prisma.user.findUnique({
@@ -473,7 +473,7 @@ export class R2Queries {
     } catch (error: any) {
       console.error(`[R2_QUERIES] Error updating user profile picture:`, error);
       throw new Error(
-        `Failed to update user profile picture: ${error.message}`
+        `Failed to update user profile picture: ${error.message}`,
       );
     }
   }
@@ -486,7 +486,7 @@ export class R2Queries {
    */
   static async getUserStorageUsage(
     prisma: PrismaClient,
-    userId: string
+    userId: string,
   ): Promise<{
     totalUsage: number;
     usageByType: Record<string, number>;
@@ -540,7 +540,7 @@ export class R2Queries {
       fileType?: string;
       limit?: number;
       offset?: number;
-    } = {}
+    } = {},
   ): Promise<{
     files: UserFileInfo[];
     totalCount: number;
@@ -571,7 +571,10 @@ export class R2Queries {
       `;
 
       // @ts-ignore - Temporary workaround
-      const countResult = await prisma.$queryRawUnsafe(countQuery, ...params);
+      const countResult = (await prisma.$queryRawUnsafe(
+        countQuery,
+        ...params,
+      )) as Array<{ count: bigint }>;
       const totalCount = Number(countResult[0]?.count || 0);
 
       // Get search results
@@ -586,7 +589,10 @@ export class R2Queries {
       params.push(limit, offset);
 
       // @ts-ignore - Temporary workaround
-      const files = await prisma.$queryRawUnsafe(dataQuery, ...params);
+      const files = (await prisma.$queryRawUnsafe(
+        dataQuery,
+        ...params,
+      )) as any[];
 
       const config = R2Config.getConfig();
       const userFiles: UserFileInfo[] = files.map((file: any) => ({
@@ -619,7 +625,7 @@ export class R2Queries {
    */
   static async getUserMigrationStatus(
     prisma: PrismaClient,
-    userId: string
+    userId: string,
   ): Promise<{
     userMigrated: boolean;
     profilePictureMigrated: boolean;
@@ -651,7 +657,7 @@ export class R2Queries {
 
       const designsTotal = designStats.reduce(
         (sum, stat) => sum + stat._count,
-        0
+        0,
       );
       const designsMigrated = designStats
         .filter((stat) => stat.migrationStatus === "completed")
@@ -666,7 +672,7 @@ export class R2Queries {
 
       const mockupJobsTotal = mockupJobStats.reduce(
         (sum, stat) => sum + stat._count,
-        0
+        0,
       );
       const mockupJobsMigrated = mockupJobStats
         .filter((stat) => stat.migrationStatus === "completed")
@@ -707,7 +713,7 @@ export class R2Queries {
     options: {
       keepBackupDays?: number;
       dryRun?: boolean;
-    } = {}
+    } = {},
   ): Promise<{
     cleanedDesigns: number;
     cleanedMockupJobs: number;
@@ -731,10 +737,10 @@ export class R2Queries {
               lt: new Date(Date.now() - keepBackupDays * 24 * 60 * 60 * 1000),
             },
             OR: [
-              { designImageUrl: { not: null } },
-              { mockupImageUrl: { not: null } },
-              { uploadedLogoUrl: { not: null } },
-              { uploadedPatternUrl: { not: null } },
+              { designImageUrl: { not: {} } },
+              { mockupImageUrl: { not: {} } },
+              { uploadedLogoUrl: { not: {} } },
+              { uploadedPatternUrl: { not: {} } },
             ],
           },
           select: { id: true },
@@ -746,10 +752,10 @@ export class R2Queries {
               id: { in: designsToClean.map((d) => d.id) },
             },
             data: {
-              designImageUrl: null,
-              mockupImageUrl: null,
-              uploadedLogoUrl: null,
-              uploadedPatternUrl: null,
+              designImageUrl: { set: null },
+              mockupImageUrl: { set: null },
+              uploadedLogoUrl: { set: null },
+              uploadedPatternUrl: { set: null },
             },
           });
         }
@@ -769,9 +775,9 @@ export class R2Queries {
               lt: new Date(Date.now() - keepBackupDays * 24 * 60 * 60 * 1000),
             },
             OR: [
-              { imageUrl: { not: null } },
-              { uploadedLogoUrl: { not: null } },
-              { uploadedPatternUrl: { not: null } },
+              { imageUrl: { not: {} } },
+              { uploadedLogoUrl: { not: {} } },
+              { uploadedPatternUrl: { not: {} } },
             ],
           },
           select: { id: true },
@@ -783,9 +789,9 @@ export class R2Queries {
               id: { in: jobsToClean.map((j) => j.id) },
             },
             data: {
-              imageUrl: null,
-              uploadedLogoUrl: null,
-              uploadedPatternUrl: null,
+              imageUrl: { set: undefined },
+              uploadedLogoUrl: { set: undefined },
+              uploadedPatternUrl: { set: undefined },
             },
           });
         }
@@ -818,8 +824,8 @@ export class R2Queries {
             await prisma.user.update({
               where: { id: userId },
               data: {
-                image: null,
-                profilePicturePath: null,
+                image: { set: null },
+                profilePicturePath: { set: null },
               },
             });
           }
@@ -830,7 +836,7 @@ export class R2Queries {
       }
 
       console.log(
-        `[R2_QUERIES] Cleanup completed for user ${userId}: ${cleanedDesigns} designs, ${cleanedMockupJobs} jobs, ${cleanedProfilePictures} profile pictures`
+        `[R2_QUERIES] Cleanup completed for user ${userId}: ${cleanedDesigns} designs, ${cleanedMockupJobs} jobs, ${cleanedProfilePictures} profile pictures`,
       );
 
       return {

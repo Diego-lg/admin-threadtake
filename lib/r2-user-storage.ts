@@ -555,3 +555,6 @@ export class R2UserStorage {
     }
   }
 }
+
+// Re-export UserFolderService for convenience
+export { UserFolderService } from "../services/user-folder-service";

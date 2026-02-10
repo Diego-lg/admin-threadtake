@@ -11,6 +11,7 @@ export type MigrationStatus =
   | "pending"
   | "in_progress"
   | "completed"
+  | "completed_with_errors"
   | "failed"
   | "rolled_back";
 
@@ -94,7 +95,7 @@ export class R2MigrationService {
     migrationType: MigrationType,
     totalRecords: number,
     userId?: string,
-    config: Partial<MigrationConfig> = {}
+    config: Partial<MigrationConfig> = {},
   ): Promise<string> {
     const migrationId = uuidv4();
     const finalConfig = { ...this.defaultConfig, ...config };
@@ -117,7 +118,7 @@ export class R2MigrationService {
       });
 
       console.log(
-        `[R2_MIGRATION] Created migration log: ${migrationId} for type: ${migrationType}`
+        `[R2_MIGRATION] Created migration log: ${migrationId} for type: ${migrationType}`,
       );
       return migrationId;
     } catch (error: any) {
@@ -141,7 +142,7 @@ export class R2MigrationService {
     failedRecords: number,
     status: MigrationStatus,
     errorMessage?: string,
-    currentStep?: string
+    currentStep?: string,
   ): Promise<void> {
     try {
       const updateData: any = {
@@ -171,7 +172,7 @@ export class R2MigrationService {
       });
 
       console.log(
-        `[R2_MIGRATION] Updated migration ${migrationId}: ${processedRecords}/${failedRecords} processed/failed, status: ${status}`
+        `[R2_MIGRATION] Updated migration ${migrationId}: ${processedRecords}/${failedRecords} processed/failed, status: ${status}`,
       );
     } catch (error: any) {
       console.error(`[R2_MIGRATION] Error updating migration progress:`, error);
@@ -185,7 +186,7 @@ export class R2MigrationService {
    * @returns Migration progress
    */
   async getMigrationProgress(
-    migrationId: string
+    migrationId: string,
   ): Promise<MigrationProgress | null> {
     try {
       const migration = await this.prisma.r2MigrationLog.findUnique({
@@ -199,7 +200,7 @@ export class R2MigrationService {
       const progressPercentage =
         migration.totalRecords > 0
           ? Math.round(
-              (migration.processedRecords / migration.totalRecords) * 100
+              (migration.processedRecords / migration.totalRecords) * 100,
             )
           : 0;
 
@@ -227,7 +228,7 @@ export class R2MigrationService {
    * @returns Array of migration progress
    */
   async getMigrationsByType(
-    migrationType: MigrationType
+    migrationType: MigrationType,
   ): Promise<MigrationProgress[]> {
     try {
       const migrations = await this.prisma.r2MigrationLog.findMany({
@@ -245,7 +246,7 @@ export class R2MigrationService {
         progressPercentage:
           migration.totalRecords > 0
             ? Math.round(
-                (migration.processedRecords / migration.totalRecords) * 100
+                (migration.processedRecords / migration.totalRecords) * 100,
               )
             : 0,
         startTime: migration.startTime,
@@ -264,7 +265,7 @@ export class R2MigrationService {
    * @returns Migration result
    */
   async migrateProfilePictures(
-    config: Partial<MigrationConfig> = {}
+    config: Partial<MigrationConfig> = {},
   ): Promise<MigrationResult> {
     const finalConfig = { ...this.defaultConfig, ...config };
     const startTime = Date.now();
@@ -291,7 +292,7 @@ export class R2MigrationService {
         "profile_pictures",
         totalRecords,
         undefined,
-        finalConfig
+        finalConfig,
       );
 
       await this.updateMigrationProgress(
@@ -300,7 +301,7 @@ export class R2MigrationService {
         0,
         "in_progress",
         undefined,
-        "Starting profile picture migration"
+        "Starting profile picture migration",
       );
 
       let processedRecords = 0;
@@ -321,13 +322,13 @@ export class R2MigrationService {
             if (user.profilePicturePath) {
               newProfilePictureKey = R2FileHelpers.convertOldPathToNewFormat(
                 user.profilePicturePath,
-                user.id
+                user.id,
               );
             } else if (user.image && !user.image.startsWith("http")) {
               // Handle legacy image field
               newProfilePictureKey = R2FileHelpers.convertOldPathToNewFormat(
                 user.image,
-                user.id
+                user.id,
               );
             }
 
@@ -352,7 +353,6 @@ export class R2MigrationService {
                   isPublic: true,
                   oldPath: user.profilePicturePath || user.image || undefined,
                   migrationStatus: "completed",
-                  migratedAt: new Date(),
                 },
               });
             }
@@ -379,8 +379,8 @@ export class R2MigrationService {
           undefined,
           `Processed ${Math.min(
             i + finalConfig.batchSize,
-            totalRecords
-          )} of ${totalRecords} users`
+            totalRecords,
+          )} of ${totalRecords} users`,
         );
       }
 
@@ -389,12 +389,12 @@ export class R2MigrationService {
         migrationId,
         processedRecords,
         failedRecords,
-        failedRecords > 0 ? "completed_with_errors" : "completed"
+        failedRecords > 0 ? "completed_with_errors" : "completed",
       );
 
       const duration = Date.now() - startTime;
       console.log(
-        `[R2_MIGRATION] Profile picture migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`
+        `[R2_MIGRATION] Profile picture migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`,
       );
 
       return {
@@ -418,7 +418,7 @@ export class R2MigrationService {
    * @returns Migration result
    */
   async migrateSavedDesigns(
-    config: Partial<MigrationConfig> = {}
+    config: Partial<MigrationConfig> = {},
   ): Promise<MigrationResult> {
     const finalConfig = { ...this.defaultConfig, ...config };
     const startTime = Date.now();
@@ -454,7 +454,7 @@ export class R2MigrationService {
         "saved_designs",
         totalRecords,
         undefined,
-        finalConfig
+        finalConfig,
       );
 
       await this.updateMigrationProgress(
@@ -463,7 +463,7 @@ export class R2MigrationService {
         0,
         "in_progress",
         undefined,
-        "Starting saved designs migration"
+        "Starting saved designs migration",
       );
 
       let processedRecords = 0;
@@ -486,7 +486,7 @@ export class R2MigrationService {
             if (design.designImageUrl) {
               const newKey = R2FileHelpers.convertOldPathToNewFormat(
                 design.designImageUrl,
-                design.userId
+                design.userId,
               );
               if (newKey) {
                 assetKeys.designImage = newKey;
@@ -494,10 +494,10 @@ export class R2MigrationService {
                   userId: design.userId,
                   fileKey: newKey,
                   fileName: `design-${design.id}`,
-                  fileType: "designs",
+                  fileType: "uploads",
                   folderPath: UserFolderPaths.getAssetTypePath(
                     design.userId,
-                    "designs"
+                    "uploads",
                   ),
                   isPublic: false,
                   oldPath: design.designImageUrl,
@@ -510,7 +510,7 @@ export class R2MigrationService {
             if (design.mockupImageUrl) {
               const newKey = R2FileHelpers.convertOldPathToNewFormat(
                 design.mockupImageUrl,
-                design.userId
+                design.userId,
               );
               if (newKey) {
                 mockupKeys.primary = newKey;
@@ -521,7 +521,7 @@ export class R2MigrationService {
                   fileType: "mockups",
                   folderPath: UserFolderPaths.getDesignMockupPath(
                     design.userId,
-                    design.designId || design.id
+                    design.designId || design.id,
                   ),
                   isPublic: false,
                   oldPath: design.mockupImageUrl,
@@ -534,7 +534,7 @@ export class R2MigrationService {
             if (design.uploadedLogoUrl) {
               const newKey = R2FileHelpers.convertOldPathToNewFormat(
                 design.uploadedLogoUrl,
-                design.userId
+                design.userId,
               );
               if (newKey) {
                 assetKeys.logo = newKey;
@@ -545,7 +545,7 @@ export class R2MigrationService {
                   fileType: "assets",
                   folderPath: UserFolderPaths.getAssetTypePath(
                     design.userId,
-                    "logos"
+                    "logos",
                   ),
                   isPublic: false,
                   oldPath: design.uploadedLogoUrl,
@@ -558,7 +558,7 @@ export class R2MigrationService {
             if (design.uploadedPatternUrl) {
               const newKey = R2FileHelpers.convertOldPathToNewFormat(
                 design.uploadedPatternUrl,
-                design.userId
+                design.userId,
               );
               if (newKey) {
                 assetKeys.pattern = newKey;
@@ -569,7 +569,7 @@ export class R2MigrationService {
                   fileType: "assets",
                   folderPath: UserFolderPaths.getAssetTypePath(
                     design.userId,
-                    "patterns"
+                    "patterns",
                   ),
                   isPublic: false,
                   oldPath: design.uploadedPatternUrl,
@@ -623,8 +623,8 @@ export class R2MigrationService {
           undefined,
           `Processed ${Math.min(
             i + finalConfig.batchSize,
-            totalRecords
-          )} of ${totalRecords} designs`
+            totalRecords,
+          )} of ${totalRecords} designs`,
         );
       }
 
@@ -633,12 +633,12 @@ export class R2MigrationService {
         migrationId,
         processedRecords,
         failedRecords,
-        failedRecords > 0 ? "completed_with_errors" : "completed"
+        failedRecords > 0 ? "completed_with_errors" : "completed",
       );
 
       const duration = Date.now() - startTime;
       console.log(
-        `[R2_MIGRATION] Saved designs migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`
+        `[R2_MIGRATION] Saved designs migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`,
       );
 
       return {
@@ -662,7 +662,7 @@ export class R2MigrationService {
    * @returns Migration result
    */
   async migrateMockupJobs(
-    config: Partial<MigrationConfig> = {}
+    config: Partial<MigrationConfig> = {},
   ): Promise<MigrationResult> {
     const finalConfig = { ...this.defaultConfig, ...config };
     const startTime = Date.now();
@@ -676,9 +676,8 @@ export class R2MigrationService {
         where: {
           migrationStatus: "pending",
           OR: [
-            { imageUrl: { not: null } },
-            { uploadedLogoUrl: { not: null } },
-            { uploadedPatternUrl: { not: null } },
+            { uploadedLogoUrl: { not: undefined } },
+            { uploadedPatternUrl: { not: undefined } },
           ],
         },
         select: {
@@ -697,7 +696,7 @@ export class R2MigrationService {
         "mockup_jobs",
         totalRecords,
         undefined,
-        finalConfig
+        finalConfig,
       );
 
       await this.updateMigrationProgress(
@@ -706,7 +705,7 @@ export class R2MigrationService {
         0,
         "in_progress",
         undefined,
-        "Starting mockup jobs migration"
+        "Starting mockup jobs migration",
       );
 
       let processedRecords = 0;
@@ -728,7 +727,7 @@ export class R2MigrationService {
             if (job.imageUrl) {
               const newKey = R2FileHelpers.convertOldPathToNewFormat(
                 job.imageUrl,
-                job.userId
+                job.userId,
               );
               if (newKey) {
                 mockupKeys.primary = newKey;
@@ -739,7 +738,7 @@ export class R2MigrationService {
                   fileType: "mockups",
                   folderPath: UserFolderPaths.getDesignMockupPath(
                     job.userId,
-                    job.designId || job.id
+                    job.designId || job.id,
                   ),
                   isPublic: false,
                   oldPath: job.imageUrl,
@@ -755,7 +754,7 @@ export class R2MigrationService {
                 results.urls.forEach((url: string, index: number) => {
                   const newKey = R2FileHelpers.convertOldPathToNewFormat(
                     url,
-                    job.userId
+                    job.userId,
                   );
                   if (newKey) {
                     mockupKeys[`result_${index}`] = newKey;
@@ -766,7 +765,7 @@ export class R2MigrationService {
                       fileType: "mockups",
                       folderPath: UserFolderPaths.getDesignMockupPath(
                         job.userId,
-                        job.designId || job.id
+                        job.designId || job.id,
                       ),
                       isPublic: false,
                       oldPath: url,
@@ -817,8 +816,8 @@ export class R2MigrationService {
           undefined,
           `Processed ${Math.min(
             i + finalConfig.batchSize,
-            totalRecords
-          )} of ${totalRecords} jobs`
+            totalRecords,
+          )} of ${totalRecords} jobs`,
         );
       }
 
@@ -827,12 +826,12 @@ export class R2MigrationService {
         migrationId,
         processedRecords,
         failedRecords,
-        failedRecords > 0 ? "completed_with_errors" : "completed"
+        failedRecords > 0 ? "completed_with_errors" : "completed",
       );
 
       const duration = Date.now() - startTime;
       console.log(
-        `[R2_MIGRATION] Mockup jobs migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`
+        `[R2_MIGRATION] Mockup jobs migration completed: ${processedRecords} processed, ${failedRecords} failed, ${duration}ms`,
       );
 
       return {
@@ -856,7 +855,7 @@ export class R2MigrationService {
    * @returns Array of migration results
    */
   async runAllMigrations(
-    config: Partial<MigrationConfig> = {}
+    config: Partial<MigrationConfig> = {},
   ): Promise<MigrationResult[]> {
     const results: MigrationResult[] = [];
 
@@ -942,7 +941,11 @@ export class R2MigrationService {
         const orphanedFiles = await this.prisma.r2FileMetadata.findMany({
           where: {
             migrationStatus: "completed",
-            OR: [{ userId: null }, { fileKey: null }, { folderPath: null }],
+            OR: [
+              { userId: undefined },
+              { fileKey: undefined },
+              { folderPath: undefined },
+            ],
           },
         });
 
@@ -1001,7 +1004,7 @@ export class R2MigrationService {
       }
 
       console.log(
-        `[R2_MIGRATION] Cleaned up ${totalDeleted} old migration logs`
+        `[R2_MIGRATION] Cleaned up ${totalDeleted} old migration logs`,
       );
       return totalDeleted;
     } catch (error: any) {
@@ -1033,30 +1036,30 @@ export class R2MigrationService {
 
       const totalMigrations = migrations.length;
       const completedMigrations = migrations.filter(
-        (m) => m.status === "completed"
+        (m) => m.status === "completed",
       ).length;
       const failedMigrations = migrations.filter(
-        (m) => m.status === "failed"
+        (m) => m.status === "failed",
       ).length;
       const pendingMigrations = migrations.filter(
-        (m) => m.status === "pending"
+        (m) => m.status === "pending",
       ).length;
 
       // Calculate average duration for completed migrations
       const completedWithTimes = migrations.filter(
-        (m) => m.status === "completed" && m.endTime
+        (m) => m.status === "completed" && m.endTime,
       );
       const averageDuration =
         completedWithTimes.length > 0
           ? completedWithTimes.reduce(
               (sum, m) => sum + (m.endTime!.getTime() - m.startTime.getTime()),
-              0
+              0,
             ) / completedWithTimes.length
           : 0;
 
       // Get last migration date
       const lastMigration = migrations.sort(
-        (a, b) => b.startTime.getTime() - a.startTime.getTime()
+        (a, b) => b.startTime.getTime() - a.startTime.getTime(),
       )[0];
 
       return {
@@ -1070,7 +1073,7 @@ export class R2MigrationService {
     } catch (error: any) {
       console.error(
         `[R2_MIGRATION] Error getting migration statistics:`,
-        error
+        error,
       );
       throw new Error(`Failed to get migration statistics: ${error.message}`);
     }

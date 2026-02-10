@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Store {
@@ -238,6 +239,7 @@ model Rating {
 model SavedDesign {
   id                 String    @id @default(uuid())
   userId             String
+  status             DesignStatus @default(PENDING)
   productId          String
   colorId            String
   sizeId             String
@@ -256,7 +258,7 @@ model SavedDesign {
   tags               String[]  @default([])
   viewCount          Int       @default(0)
   isShared           Boolean   @default(false)
-  usageRights        String?
+  usageRights       String?
   averageRating      Float     @default(0)
   ratingCount        Int       @default(0)
   designId           String?
@@ -268,17 +270,19 @@ model SavedDesign {
   uploadedPatternKey String?
   assetKeys          Json?
   mockupKeys         Json?
+  progress           Int       @default(0)
+  error              String?
   migrationStatus    String    @default("pending")
-  migratedAt         DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  derivedProductId   String?   @unique
-  derivedProduct     Product?  @relation("ProductForDesign")
-  ratings            Rating[]
-  color              Color     @relation(fields: [colorId], references: [id])
-  product            Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  size               Size      @relation(fields: [sizeId], references: [id])
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  migratedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  derivedProductId  String?   @unique
+  derivedProduct    Product?  @relation("ProductForDesign")
+  ratings           Rating[]
+  color             Color     @relation(fields: [colorId], references: [id])
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size              Size      @relation(fields: [sizeId], references: [id])
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([productId])
@@ -295,6 +299,7 @@ model SavedDesign {
   @@index([uploadedLogoKey])
   @@index([uploadedPatternKey])
   @@index([migrationStatus])
+  @@index([status])
 }
 
 model SalesGoal {
@@ -440,6 +445,13 @@ enum UserStatus {
   INACTIVE
 }
 
+enum DesignStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
 enum MetricType {
   REVENUE
   UNITS_SOLD
@@ -449,4 +461,12 @@ enum TimePeriod {
   DAILY
   WEEKLY
   MONTHLY
+}
+
+model FrontendConfig {
+  id        String   @id @default(cuid())
+  section   String   @unique
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

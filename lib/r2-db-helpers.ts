@@ -326,7 +326,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const countResult = await prisma.$queryRawUnsafe(countQuery, ...params);
+      const countResult = await prisma.$queryRawUnsafe(countQuery, ...params) as Array<{ count: bigint }>;
       const totalCount = Number(countResult[0]?.count || 0);
 
       // Get paginated results
@@ -345,7 +345,7 @@ export class R2DbHelpers {
       params.push(limit, offset);
 
       // @ts-ignore - Temporary workaround
-      const files = await prisma.$queryRawUnsafe(dataQuery, ...params);
+      const files = await prisma.$queryRawUnsafe(dataQuery, ...params) as any[];
 
       const totalPages = Math.ceil(totalCount / limit);
       const currentPage = Math.floor(offset / limit) + 1;
@@ -392,7 +392,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const results = await prisma.$queryRawUnsafe(query, userId);
+      const results = await prisma.$queryRawUnsafe(query, userId) as any[];
 
       const fileCounts: Record<string, number> = {};
       const sizeByType: Record<string, number> = {};
@@ -441,7 +441,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const result = await prisma.$queryRawUnsafe(query, userId);
+      const result = await prisma.$queryRawUnsafe(query, userId) as any[];
       const totalSize = Number(result[0]?.totalSize || 0);
 
       // Update user record
@@ -487,7 +487,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const dbFiles = await prisma.$queryRawUnsafe(query, userId);
+      const dbFiles = await prisma.$queryRawUnsafe(query, userId) as any[];
       const dbFileKeys = new Set(dbFiles.map((f: any) => f.fileKey));
 
       // Find files in R2 that don't exist in database
@@ -532,7 +532,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const orphanedRecords = await prisma.$queryRawUnsafe(query, userId);
+      const orphanedRecords = await prisma.$queryRawUnsafe(query, userId) as any[];
 
       if (orphanedRecords.length === 0) {
         console.log(
@@ -609,7 +609,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const records = await prisma.$queryRawUnsafe(query, ...params);
+      const records = await prisma.$queryRawUnsafe(query, ...params) as any[];
       const issues: Array<{
         id: string;
         userId: string;
@@ -714,7 +714,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const stats = await prisma.$queryRawUnsafe(statsQuery);
+      const stats = await prisma.$queryRawUnsafe(statsQuery) as any[];
 
       // Get recent migrations
       const recentQuery = `
@@ -733,7 +733,7 @@ export class R2DbHelpers {
       `;
 
       // @ts-ignore - Temporary workaround
-      const recentMigrations = await prisma.$queryRawUnsafe(recentQuery);
+      const recentMigrations = await prisma.$queryRawUnsafe(recentQuery) as any[];
 
       return {
         totalMigrations: Number(stats[0]?.total || 0),

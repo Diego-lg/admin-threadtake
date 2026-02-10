@@ -1,11 +1,9 @@
 import { AuthOptions } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
-import bcrypt from "bcrypt";
 
-import prismadb from "@/lib/prismadb"; // Assuming prismadb is exported from here
-import { User, UserRole } from "@prisma/client";
+import prismadb from "@/lib/prismadb";
+import { UserRole } from "@prisma/client";
 
 // Define authOptions here
 export const authOptions: AuthOptions = {
@@ -15,62 +13,6 @@ export const authOptions: AuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "text" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Invalid credentials");
-        }
-
-        const user = await prismadb.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
-
-        // If user doesn't exist or doesn't have a hashed password (e.g., signed up via OAuth)
-        if (!user || !user.hashedPassword) {
-          throw new Error("Invalid credentials");
-        }
-
-        const isCorrectPassword = await bcrypt.compare(
-          credentials.password,
-          user.hashedPassword
-        );
-
-        if (!isCorrectPassword) {
-          throw new Error("Invalid credentials");
-        }
-
-        // Add check for user status
-        if (user.status !== "ACTIVE") {
-          // Assuming UserStatus enum values are strings like 'ACTIVE'
-          console.log(
-            `[Auth] Login denied: User ${user.email} account is inactive.`
-          ); // Log inactive attempt
-          throw new Error("Account is inactive");
-        }
-
-        // Check if the user has the ADMIN role
-        if (user.role !== UserRole.ADMIN) {
-          // Assuming UserRole enum exists and has ADMIN
-          console.log(
-            `[Auth] Login denied: User ${user.email} is not an admin.`
-          ); // Log non-admin attempt
-          throw new Error("Access denied: Admins only.");
-        }
-
-        // Return user object if credentials are valid and account is active
-        console.log(`[Auth] Admin login successful: User ${user.email}`); // Log successful admin login
-        return user;
-      },
-    }),
-    // Add other providers like Google, GitHub here if needed
-    // e.g., GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! })
   ],
   debug: process.env.NODE_ENV === "development", // Enable debug messages in development
   session: {
@@ -114,16 +56,16 @@ export const authOptions: AuthOptions = {
     async jwt({ token, user, trigger, session }) {
       console.log(
         "[NextAuth JWT Callback] START - Incoming Token:",
-        JSON.stringify(token)
+        JSON.stringify(token),
       );
       console.log(
         "[NextAuth JWT Callback] START - User object (only present on login):",
-        user ? user.id : "N/A"
+        user ? user.id : "N/A",
       );
       console.log("[NextAuth JWT Callback] START - Trigger:", trigger);
       console.log(
         "[NextAuth JWT Callback] START - Session object (only present on update):",
-        session ? Object.keys(session) : "N/A"
+        session ? Object.keys(session) : "N/A",
       );
 
       // On initial sign in, `user` object is present.
@@ -147,7 +89,7 @@ export const authOptions: AuthOptions = {
           // Fallback to the ID from the provider, but log a warning.
           token.id = user.id;
           console.warn(
-            `[NextAuth JWT Callback] Warning: User with email ${user.email} not found in DB during JWT creation. Using provider ID.`
+            `[NextAuth JWT Callback] Warning: User with email ${user.email} not found in DB during JWT creation. Using provider ID.`,
           );
         }
       }
@@ -156,7 +98,7 @@ export const authOptions: AuthOptions = {
       if (trigger === "update" && session) {
         console.log(
           "[NextAuth JWT Callback] Update trigger detected. Session data:",
-          session
+          session,
         );
         // Merge the session data passed from update() into the token
         if (session.profileCardBackground !== undefined) {
@@ -178,18 +120,18 @@ export const authOptions: AuthOptions = {
 
       console.log(
         "[NextAuth JWT Callback] END - Returning Token:",
-        JSON.stringify(token)
+        JSON.stringify(token),
       );
       return token; // Return the token with the correct database ID
     },
     async session({ session, token }) {
       console.log(
         "[NextAuth Session Callback] START - Incoming Session:",
-        JSON.stringify(session)
+        JSON.stringify(session),
       ); // DEBUG LOG
       console.log(
         "[NextAuth Session Callback] START - Incoming Token:",
-        JSON.stringify(token)
+        JSON.stringify(token),
       ); // DEBUG LOG
 
       // Ensure session.user exists
