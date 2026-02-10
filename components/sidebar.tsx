@@ -16,6 +16,7 @@ import {
   Droplets, // Added Droplets icon for Colors
   Ruler, // Added Ruler icon for Sizes
   Cloud, // Added Cloud icon for R2 Manager
+  Megaphone, // Added Megaphone icon for Billboards
 } from "lucide-react";
 
 interface SidebarProps {
@@ -92,6 +93,14 @@ const Sidebar = ({ params }: SidebarProps) => {
         >
           <Palette className="mr-3 h-5 w-5" /> {/* Using Palette icon */}
           {isExpanded && <span>Generator Base</span>}
+        </Link>
+        {/* Billboards Link */}
+        <Link
+          href={`/${storeId}/billboards`} // Link to billboards page
+          className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <Megaphone className="mr-3 h-5 w-5" />
+          {isExpanded && <span>Billboards</span>}
         </Link>
         {/* Product Options Link */}
         <Link
