@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 import Navbar from "@/components/navBar";
 
 const AdminLayout = ({ children }: { children: React.ReactNode }) => {

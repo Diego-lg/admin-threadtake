@@ -483,3 +483,16 @@ model R2AuditLog {
   @@index([action])
   @@index([createdAt])
 }
+
+// Rate Limit Model for Database Rate Limiting
+model RateLimit {
+  identifier String   @id
+  count      Int      @default(0)
+  resetTime  DateTime
+  lastAccess DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@index([identifier])
+  @@index([resetTime])
+}

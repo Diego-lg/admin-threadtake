@@ -5,7 +5,9 @@ import GoogleProvider from "next-auth/providers/google";
 import prismadb from "@/lib/prismadb";
 import { UserRole } from "@prisma/client";
 
-// Admin email restriction - only this email can access the backend
+// Admin email restriction - configurable via ADMIN_EMAIL environment variable
+// If ADMIN_EMAIL is set, only that email can access the backend
+// If not set, email restriction is disabled (all authenticated users can access)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase();
 
 // Define authOptions here
@@ -57,10 +59,8 @@ export const authOptions: AuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, trigger, session }) {
-      console.log(
-        "[NextAuth JWT Callback] START - Incoming Token:",
-        JSON.stringify(token),
-      );
+      // Debug logging with redacted sensitive data
+      console.log("[NextAuth JWT Callback] START - Processing token");
       console.log(
         "[NextAuth JWT Callback] START - User object (only present on login):",
         user ? user.id : "N/A",
@@ -68,7 +68,7 @@ export const authOptions: AuthOptions = {
       console.log("[NextAuth JWT Callback] START - Trigger:", trigger);
       console.log(
         "[NextAuth JWT Callback] START - Session object (only present on update):",
-        session ? Object.keys(session) : "N/A",
+        session ? "present" : "N/A",
       );
 
       // On initial sign in, `user` object is present.
@@ -79,7 +79,7 @@ export const authOptions: AuthOptions = {
             `[NextAuth JWT Callback] Unauthorized sign-in attempt from email: ${user.email}`,
           );
           throw new Error(
-            "Unauthorized email - only threadtake@gmail.com is allowed to access this backend.",
+            `Unauthorized email - only ${ADMIN_EMAIL} is allowed to access this backend.`,
           );
         }
 
@@ -109,10 +109,7 @@ export const authOptions: AuthOptions = {
 
       // Handle session updates triggered by the client-side `update()` function
       if (trigger === "update" && session) {
-        console.log(
-          "[NextAuth JWT Callback] Update trigger detected. Session data:",
-          session,
-        );
+        console.log("[NextAuth JWT Callback] Update trigger detected");
         // Merge the session data passed from update() into the token
         if (session.profileCardBackground !== undefined) {
           token.profileCardBackground = session.profileCardBackground;
@@ -131,21 +128,12 @@ export const authOptions: AuthOptions = {
         }
       }
 
-      console.log(
-        "[NextAuth JWT Callback] END - Returning Token:",
-        JSON.stringify(token),
-      );
+      console.log("[NextAuth JWT Callback] END - Token processed successfully");
       return token; // Return the token with the correct database ID
     },
     async session({ session, token }) {
-      console.log(
-        "[NextAuth Session Callback] START - Incoming Session:",
-        JSON.stringify(session),
-      ); // DEBUG LOG
-      console.log(
-        "[NextAuth Session Callback] START - Incoming Token:",
-        JSON.stringify(token),
-      ); // DEBUG LOG
+      // Debug logging with redacted sensitive data
+      console.log("[NextAuth Session Callback] START - Processing session");
 
       // Ensure session.user exists
       // Ensure session.user exists and has the correct type structure
@@ -196,7 +184,7 @@ export const authOptions: AuthOptions = {
         // that verifies the session server-side using `getServerSession`.
       }
 
-      console.log(`[NextAuth Session Callback] Returning session:`, session); // DEBUG LOG
+      console.log("[NextAuth Session Callback] Session ready");
       return session; // Return the potentially modified session
     },
   },

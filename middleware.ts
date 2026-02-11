@@ -86,17 +86,17 @@ export async function middleware(req: NextRequest) {
         console.log(
           "[Middleware] Attempting diagnostic getToken for /api/designs/my-designs...",
         );
-        // --- Log raw cookie header seen by middleware ---
+        // --- Log raw cookie header seen by middleware (REDACTED) ---
         const rawCookieHeader = req.headers.get("cookie");
-        console.log(
-          `[Middleware] Raw Cookie Header: ${rawCookieHeader || "NONE"}`,
-        );
+        const hasAuthCookie =
+          rawCookieHeader && rawCookieHeader.includes("next-auth");
+        console.log(`[Middleware] Auth cookie present: ${hasAuthCookie}`);
         // --- End log raw cookie header ---
         try {
           const diagnosticToken = await getToken({ req, secret });
           if (diagnosticToken) {
             console.log(
-              `[Middleware] Diagnostic getToken SUCCESSFUL. Token ID: ${diagnosticToken.id}, Sub: ${diagnosticToken.sub}`,
+              `[Middleware] Diagnostic getToken: Authentication verified`,
             );
           } else {
             console.error("[Middleware] Diagnostic getToken returned NULL.");
@@ -161,7 +161,7 @@ export async function middleware(req: NextRequest) {
 
       const token = await getToken({ req, secret });
       console.log(
-        `[Middleware] Token found: ${token ? JSON.stringify(token) : "null"}`,
+        `[Middleware] Token verification: ${token ? "valid" : "null"}`,
       ); // <-- ADD THIS LOG
 
       // If no token, redirect to login

@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
 import prismadb from "@/lib/prismadb";
-import { UserRole } from "@prisma/client";
-
-// Define the expected shape of the JWT payload
-interface JwtPayload {
-  userId: string;
-  email: string;
-  role: UserRole;
-  iat: number;
-  exp: number;
-}
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 // Helper function to get or create the general settings
 async function getGeneralSettings() {
@@ -32,36 +23,16 @@ async function getGeneralSettings() {
 // POST /api/designs - Create a new saved design for the logged-in user
 export async function POST(req: Request) {
   try {
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
+    // Get NextAuth session for authentication
+    const session = await getServerSession(authOptions);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized - Please sign in to save designs", {
         status: 401,
       });
     }
 
-    // 2. Extract token
-    const token = authHeader.split(" ")[1];
-
-    // 3. Verify token
-    let decodedPayload: JwtPayload;
-    try {
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        throw new Error("JWT_SECRET environment variable is not set!");
-      }
-      decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
-    } catch (error) {
-      console.error("JWT Verification Error:", error);
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    // 4. Use userId from token
-    const userId = decodedPayload.userId;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
+    const userId = session.user.id;
 
     // --- Design Limit Check START ---
     // Fetch user details and general settings concurrently
@@ -89,15 +60,15 @@ export async function POST(req: Request) {
     // Check if the user has reached the limit
     if (currentDesignCount >= limit) {
       console.log(
-        `User ${userId} reached design limit (${currentDesignCount}/${limit}).`
+        `User ${userId} reached design limit (${currentDesignCount}/${limit}).`,
       );
       return new NextResponse(
         `You have reached the maximum limit of ${limit} saved designs.`,
-        { status: 403 } // 403 Forbidden is appropriate here
+        { status: 403 }, // 403 Forbidden is appropriate here
       );
     }
     console.log(
-      `User ${userId} design count: ${currentDesignCount}/${limit}. Proceeding.`
+      `User ${userId} design count: ${currentDesignCount}/${limit}. Proceeding.`,
     );
     // --- Design Limit Check END ---
 
@@ -150,7 +121,7 @@ export async function POST(req: Request) {
     if (!productId || !colorId || !sizeId) {
       return new NextResponse(
         "Product ID, Color ID, and Size ID are required",
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -186,7 +157,7 @@ export async function POST(req: Request) {
     // Proceed with creating the design if limit not reached
     const savedDesign = await prismadb.savedDesign.create({
       data: {
-        userId: userId, // Use userId from verified token
+        userId: userId, // Use userId from NextAuth session
         productId,
         colorId,
         sizeId,
@@ -231,39 +202,19 @@ export async function POST(req: Request) {
   }
 }
 
-// GET /api/designs - Get all saved designs for the logged-in user (Keep existing GET handler)
+// GET /api/designs - Get all saved designs for the logged-in user
 export async function GET(req: Request) {
   try {
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
+    // Get NextAuth session for authentication
+    const session = await getServerSession(authOptions);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthorized - Please sign in to view designs", {
         status: 401,
       });
     }
 
-    // 2. Extract token
-    const token = authHeader.split(" ")[1];
-
-    // 3. Verify token
-    let decodedPayload: JwtPayload;
-    try {
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        throw new Error("JWT_SECRET environment variable is not set!");
-      }
-      decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
-    } catch (error) {
-      console.error("JWT Verification Error:", error);
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    // 4. Use userId from token
-    const userId = decodedPayload.userId;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
+    const userId = session.user.id;
 
     const savedDesigns = await prismadb.savedDesign.findMany({
       where: {

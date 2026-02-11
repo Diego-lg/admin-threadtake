@@ -1,6 +1,9 @@
 import { UserFolderPaths } from "./r2-user-storage";
 import { ALLOWED_EXTENSIONS, MAX_FILE_SIZES } from "./r2-file-helpers";
-import { UserRole } from "@prisma/client";
+import { UserRole, PrismaClient } from "@prisma/client";
+
+// Initialize Prisma client for database-based rate limiting
+const prisma = new PrismaClient();
 
 /**
  * Security validation result interface
@@ -44,9 +47,12 @@ interface RateLimitEntry {
 }
 
 /**
- * In-memory rate limit store (in production, use Redis or similar)
+ * Hybrid rate limit store - uses Prisma database for persistence
+ * Falls back to in-memory for development/fallback scenarios
  */
 const rateLimitStore = new Map<string, RateLimitEntry>();
+const USE_DATABASE_RATE_LIMITING =
+  process.env.USE_DATABASE_RATE_LIMITING === "true";
 
 /**
  * Security validation utilities for R2 operations
@@ -232,7 +238,7 @@ export class R2Security {
    */
   static validateFileType(
     file: File,
-    fileType: keyof typeof ALLOWED_EXTENSIONS
+    fileType: keyof typeof ALLOWED_EXTENSIONS,
   ): SecurityValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -243,10 +249,10 @@ export class R2Security {
     if (file.size > maxSize) {
       errors.push(
         `File size (${Math.round(
-          file.size / 1024 / 1024
+          file.size / 1024 / 1024,
         )}MB) exceeds maximum allowed size (${Math.round(
-          maxSize / 1024 / 1024
-        )}MB)`
+          maxSize / 1024 / 1024,
+        )}MB)`,
       );
       riskLevel = "high";
     }
@@ -258,8 +264,8 @@ export class R2Security {
     if (!allowedExtensions.includes(extension as any)) {
       errors.push(
         `File extension .${extension} is not allowed. Allowed extensions: ${allowedExtensions.join(
-          ", "
-        )}`
+          ", ",
+        )}`,
       );
       riskLevel = "high";
     }
@@ -268,7 +274,7 @@ export class R2Security {
     const allowedMimeTypes = this.getAllowedMimeTypes(fileType);
     if (!allowedMimeTypes.includes(file.type)) {
       warnings.push(
-        `File MIME type (${file.type}) doesn't match expected type for .${extension} files`
+        `File MIME type (${file.type}) doesn't match expected type for .${extension} files`,
       );
       if (riskLevel === "low") riskLevel = "medium";
     }
@@ -293,7 +299,7 @@ export class R2Security {
    * @returns Array of allowed MIME types
    */
   private static getAllowedMimeTypes(
-    fileType: keyof typeof ALLOWED_EXTENSIONS
+    fileType: keyof typeof ALLOWED_EXTENSIONS,
   ): string[] {
     const mimeTypes: Record<string, string[]> = {
       profilePicture: ["image/jpeg", "image/png", "image/webp"],
@@ -324,7 +330,7 @@ export class R2Security {
    * @returns Validation result
    */
   static validateUserAccess(
-    context: FileOperationContext
+    context: FileOperationContext,
   ): SecurityValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -371,12 +377,61 @@ export class R2Security {
   }
 
   /**
-   * Check if a request should be rate limited
+   * Check if a request should be rate limited using database
    * @param identifier Unique identifier for rate limiting (e.g., user ID or IP)
    * @param config Rate limiting configuration
    * @returns True if request should be rate limited
    */
-  static checkRateLimit(identifier: string, config: RateLimitConfig): boolean {
+  static async checkRateLimitDb(
+    identifier: string,
+    config: RateLimitConfig,
+  ): Promise<boolean> {
+    try {
+      const now = Date.now();
+      const windowEnd = now + config.windowMs;
+
+      // Upsert rate limit entry
+      await prisma.rateLimit.upsert({
+        where: { identifier },
+        update: {
+          count: { increment: 1 },
+          lastAccess: new Date(now),
+          resetTime: new Date(windowEnd),
+        },
+        create: {
+          identifier,
+          count: 1,
+          resetTime: new Date(windowEnd),
+          lastAccess: new Date(now),
+        },
+      });
+
+      // Get current count and check limit
+      const entry = await prisma.rateLimit.findUnique({
+        where: { identifier },
+      });
+
+      if (entry && entry.count > config.maxRequests) {
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      // Fallback to in-memory on database error
+      return this.checkRateLimitMemory(identifier, config);
+    }
+  }
+
+  /**
+   * Check if a request should be rate limited (in-memory fallback)
+   * @param identifier Unique identifier for rate limiting (e.g., user ID or IP)
+   * @param config Rate limiting configuration
+   * @returns True if request should be rate limited
+   */
+  static checkRateLimitMemory(
+    identifier: string,
+    config: RateLimitConfig,
+  ): boolean {
     const now = Date.now();
     const entry = rateLimitStore.get(identifier);
 
@@ -403,11 +458,80 @@ export class R2Security {
   }
 
   /**
-   * Get current rate limit status
+   * Check if a request should be rate limited (public method)
+   * @param identifier Unique identifier for rate limiting (e.g., user ID or IP)
+   * @param config Rate limiting configuration
+   * @returns True if request should be rate limited
+   */
+  static async checkRateLimit(
+    identifier: string,
+    config: RateLimitConfig,
+  ): Promise<boolean> {
+    if (USE_DATABASE_RATE_LIMITING) {
+      return this.checkRateLimitDb(identifier, config);
+    }
+    return this.checkRateLimitMemory(identifier, config);
+  }
+
+  /**
+   * Get current rate limit status from database
    * @param identifier Unique identifier for rate limiting
+   * @param config Rate limiting configuration
    * @returns Rate limit status
    */
-  static getRateLimitStatus(identifier: string): {
+  static async getRateLimitStatusDb(
+    identifier: string,
+    config: RateLimitConfig,
+  ): Promise<{
+    count: number;
+    limit: number;
+    remaining: number;
+    resetTime: number;
+  } | null> {
+    try {
+      const now = Date.now();
+      const nowDate = new Date(now);
+
+      // Clean up expired entries
+      await prisma.rateLimit.deleteMany({
+        where: {
+          resetTime: { lt: nowDate },
+        },
+      });
+
+      const entry = await prisma.rateLimit.findUnique({
+        where: { identifier },
+      });
+
+      if (!entry) return null;
+
+      if (now > entry.resetTime.getTime()) {
+        await prisma.rateLimit.delete({ where: { identifier } });
+        return null;
+      }
+
+      return {
+        count: entry.count,
+        limit: config.maxRequests,
+        remaining: Math.max(0, config.maxRequests - entry.count),
+        resetTime: entry.resetTime.getTime(),
+      };
+    } catch (error) {
+      // Fallback to in-memory on database error
+      return this.getRateLimitStatusMemory(identifier, config);
+    }
+  }
+
+  /**
+   * Get current rate limit status (in-memory fallback)
+   * @param identifier Unique identifier for rate limiting
+   * @param config Rate limiting configuration
+   * @returns Rate limit status
+   */
+  static getRateLimitStatusMemory(
+    identifier: string,
+    config: RateLimitConfig,
+  ): {
     count: number;
     limit: number;
     remaining: number;
@@ -424,16 +548,55 @@ export class R2Security {
 
     return {
       count: entry.count,
-      limit: 100, // Default limit
-      remaining: Math.max(0, 100 - entry.count),
+      limit: config.maxRequests,
+      remaining: Math.max(0, config.maxRequests - entry.count),
       resetTime: entry.resetTime,
     };
   }
 
   /**
-   * Clean up expired rate limit entries
+   * Get current rate limit status (public method)
+   * @param identifier Unique identifier for rate limiting
+   * @param config Rate limiting configuration
+   * @returns Rate limit status
    */
-  static cleanupRateLimitStore(): void {
+  static async getRateLimitStatus(
+    identifier: string,
+    config: RateLimitConfig,
+  ): Promise<{
+    count: number;
+    limit: number;
+    remaining: number;
+    resetTime: number;
+  } | null> {
+    if (USE_DATABASE_RATE_LIMITING) {
+      return this.getRateLimitStatusDb(identifier, config);
+    }
+    return this.getRateLimitStatusMemory(identifier, config);
+  }
+
+  /**
+   * Clean up expired rate limit entries from database
+   */
+  static async cleanupRateLimitStoreDb(): Promise<void> {
+    try {
+      const now = Date.now();
+      const nowDate = new Date(now);
+      await prisma.rateLimit.deleteMany({
+        where: {
+          resetTime: { lt: nowDate },
+        },
+      });
+    } catch (error) {
+      // Fallback to in-memory cleanup on database error
+      this.cleanupRateLimitStoreMemory();
+    }
+  }
+
+  /**
+   * Clean up expired rate limit entries (in-memory fallback)
+   */
+  static cleanupRateLimitStoreMemory(): void {
     const now = Date.now();
     for (const [key, entry] of rateLimitStore.entries()) {
       if (now > entry.resetTime) {
@@ -443,14 +606,24 @@ export class R2Security {
   }
 
   /**
+   * Clean up expired rate limit entries (public method)
+   */
+  static async cleanupRateLimitStore(): Promise<void> {
+    if (USE_DATABASE_RATE_LIMITING) {
+      return this.cleanupRateLimitStoreDb();
+    }
+    this.cleanupRateLimitStoreMemory();
+  }
+
+  /**
    * Generate a secure content security policy header
    * @returns CSP header value
    */
   static generateContentSecurityPolicy(): string {
     return [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self'",
+      "style-src 'self'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
@@ -459,6 +632,7 @@ export class R2Security {
       "frame-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "upgrade-insecure-requests",
     ].join("; ");
   }
 

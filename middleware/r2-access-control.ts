@@ -224,22 +224,25 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
  * @param userId User ID
  * @returns NextResponse if rate limited, null otherwise
  */
-function handleRateLimiting(
+async function handleRateLimiting(
   request: NextRequest,
   userId: string,
-): NextResponse | null {
+): Promise<NextResponse | null> {
   if (!currentConfig.enableRateLimiting) {
     return null;
   }
 
   const identifier = userId || getClientIPAddress(request);
-  const isRateLimited = R2Security.checkRateLimit(
+  const isRateLimited = await R2Security.checkRateLimit(
     identifier,
     currentConfig.rateLimitConfig,
   );
 
   if (isRateLimited) {
-    const rateLimitStatus = R2Security.getRateLimitStatus(identifier);
+    const rateLimitStatus = await R2Security.getRateLimitStatus(
+      identifier,
+      currentConfig.rateLimitConfig,
+    );
     return NextResponse.json(
       {
         error: "Rate limit exceeded",
@@ -364,7 +367,7 @@ export async function r2AccessControlMiddleware(
     });
 
     // Handle rate limiting
-    const rateLimitResponse = handleRateLimiting(request, userId);
+    const rateLimitResponse = await handleRateLimiting(request, userId);
     if (rateLimitResponse) {
       // Log rate limit exceeded
       if (currentConfig.enableAuditLogging) {

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth"; // Import from the correct location
 
+export const dynamic = "force-dynamic";
+
 import Navbar from "@/components/navBar";
 import Sidebar from "@/components/sidebar"; // Import the new Sidebar
 

@@ -68,7 +68,7 @@ export class R2AuthEnhancement {
    */
   static addR2SecurityHeaders(
     response: NextResponse,
-    context?: FileOperationContext
+    context?: FileOperationContext,
   ): NextResponse {
     // Add standard security headers
     const securityHeaders = R2Security.generateSecurityHeaders();
@@ -86,7 +86,7 @@ export class R2AuthEnhancement {
       response.headers.set("X-R2-Operation", context.operation);
       response.headers.set(
         "X-R2-User-ID",
-        context.userId.substring(0, 8) + "..."
+        context.userId.substring(0, 8) + "...",
       ); // Partial ID for security
     }
 
@@ -199,7 +199,7 @@ export class R2AuthEnhancement {
    * @returns Operation type
    */
   private static extractOperationFromRequest(
-    request: NextRequest
+    request: NextRequest,
   ): "read" | "write" | "delete" | "list" {
     const method = request.method;
     const url = new URL(request.url);
@@ -274,7 +274,7 @@ export class R2AuthEnhancement {
 
     // Create a simple hash (in production, use a proper crypto library)
     const token = Buffer.from(`${timestamp}-${random}-${secret}`).toString(
-      "base64"
+      "base64",
     );
     return token;
   }
@@ -312,7 +312,7 @@ export class R2AuthEnhancement {
     request: NextRequest,
     context: FileOperationContext,
     outcome: "success" | "failure" | "blocked",
-    errorMessage?: string
+    errorMessage?: string,
   ): NextResponse {
     // Add security headers
     this.addR2SecurityHeaders(response, context);
@@ -322,23 +322,6 @@ export class R2AuthEnhancement {
 
     // Process for security monitoring
     R2SecurityMonitor.processOperation(context, outcome, errorMessage);
-
-    // Add rate limit headers if available
-    const rateLimitStatus = R2Security.getRateLimitStatus(context.userId);
-    if (rateLimitStatus) {
-      response.headers.set(
-        "X-RateLimit-Limit",
-        rateLimitStatus.limit.toString()
-      );
-      response.headers.set(
-        "X-RateLimit-Remaining",
-        rateLimitStatus.remaining.toString()
-      );
-      response.headers.set(
-        "X-RateLimit-Reset",
-        rateLimitStatus.resetTime.toString()
-      );
-    }
 
     return response;
   }
@@ -355,7 +338,7 @@ export class R2AuthEnhancement {
     request: NextRequest,
     context: FileOperationContext,
     error: string,
-    status: number = 400
+    status: number = 400,
   ): NextResponse {
     const response = NextResponse.json(
       {
@@ -364,7 +347,7 @@ export class R2AuthEnhancement {
         timestamp: new Date().toISOString(),
         requestId: Math.random().toString(36).substring(2),
       },
-      { status }
+      { status },
     );
 
     return this.enhanceResponse(response, request, context, "failure", error);
@@ -380,7 +363,7 @@ export class R2AuthEnhancement {
   static createSuccessResponse(
     request: NextRequest,
     context: FileOperationContext,
-    data: any
+    data: any,
   ): NextResponse {
     const response = NextResponse.json({
       success: true,
