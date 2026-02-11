@@ -8,10 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "seed:frontend-config": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-frontend-config.ts"
+    "seed:frontend-config": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-frontend-config.ts",
+    "seed:product": "ts-node prisma/seed-product.ts"
   },
   "prisma": {
-    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-frontend-config.ts"
+    "seed": "ts-node prisma/seed-product.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.782.0",
