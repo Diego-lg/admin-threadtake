@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ productId: string }> }
+  { params }: { params: Promise<{ productId: string }> },
 ) {
   try {
     const { productId } = await params;
@@ -72,7 +72,7 @@ export async function GET(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ storeId: string; productId: string }> }
+  { params }: { params: Promise<{ storeId: string; productId: string }> },
 ) {
   try {
     const { productId, storeId } = await params;
@@ -83,12 +83,16 @@ export async function PATCH(
       name,
       price,
       categoryId,
-      colorId,
-      sizeId,
+      colorId: providedColorId,
+      sizeId: providedSizeId,
       images,
       isFeatured,
       isArchived,
     } = body;
+
+    // Handle optional colorId and sizeId
+    const colorId = providedColorId === undefined ? undefined : providedColorId;
+    const sizeId = providedSizeId === undefined ? undefined : providedSizeId;
 
     if (!userId) {
       return new NextResponse("Unauthenticated", { status: 401 });
@@ -106,13 +110,7 @@ export async function PATCH(
     if (!categoryId) {
       return new NextResponse("categoryId is required", { status: 400 });
     }
-    if (!colorId) {
-      // Corrected error message: "imageUrl is required" -> "colorId is required"
-      return new NextResponse("colorId is required", { status: 400 });
-    }
-    if (!sizeId) {
-      return new NextResponse("sizeId is required", { status: 400 });
-    }
+    // Removed strict checks for colorId and sizeId
 
     if (!productId) {
       return new NextResponse("Product ID is required", { status: 400 });
@@ -135,8 +133,8 @@ export async function PATCH(
         name,
         price,
         categoryId,
-        colorId,
-        sizeId,
+        ...(colorId !== undefined && { colorId }),
+        ...(sizeId !== undefined && { sizeId }),
         images: {
           deleteMany: {},
         },
@@ -175,7 +173,7 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ storeId: string; productId: string }> }
+  { params }: { params: Promise<{ storeId: string; productId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);

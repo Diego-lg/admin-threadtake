@@ -1,10 +1,9 @@
 "use client";
 
 import * as z from "zod";
-import { Product, Category, Color, Image, Size } from "@prisma/client";
+import { Product, Category, Image } from "@prisma/client";
 import { Heading } from "@/components/ui/heading";
 import { Button } from "@/components/ui/button";
-// Removed Trash import as delete is not needed
 import { Separator } from "@/components/ui/separator";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +11,6 @@ import { useState } from "react";
 import {
   Form,
   FormControl,
-  FormDescription, // Keep if needed for other fields
   FormField,
   FormItem,
   FormLabel,
@@ -22,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import toast from "react-hot-toast";
 import axios from "axios";
 import { useParams, useRouter } from "next/navigation";
-// Removed AlertModal import
 import ImageUpload from "@/components/ui/image-upload";
 import {
   Select,
@@ -31,7 +28,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-// Removed Checkbox import
 
 // Schema remains largely the same, but featured/archived are handled programmatically
 const formSchema = z.object({
@@ -39,11 +35,9 @@ const formSchema = z.object({
   images: z
     .object({ url: z.string() })
     .array()
-    .min(1, "At least one image is required."), // Ensure at least one image
+    .min(1, "At least one image is required."),
   price: z.coerce.number().min(1),
   categoryId: z.string().min(1),
-  colorId: z.string().min(1), // Reinstated colorId
-  sizeId: z.string().min(1), // Reinstated sizeId
   // isFeatured and isArchived are handled programmatically
 });
 
@@ -56,15 +50,11 @@ interface GeneratorBaseFormProps {
       })
     | null;
   categories: Category[];
-  colors: Color[]; // Reinstated colors prop
-  sizes: Size[]; // Reinstated sizes prop
 }
 
 export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
   initialData,
   categories,
-  colors, // Reinstated colors prop
-  sizes, // Reinstated sizes prop
 }) => {
   const params = useParams();
   const router = useRouter();
@@ -89,18 +79,13 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
       ? {
           ...initialData,
           price: parseFloat(String(initialData?.price)),
-          images: initialData.images || [], // Ensure images is always an array
-          colorId: initialData.colorId, // Reinstated colorId
-          sizeId: initialData.sizeId, // Reinstated sizeId
+          images: initialData.images || [],
         }
       : {
           name: "",
           images: [],
           price: 0,
-          categoryId: "", // Ensure default categoryId is handled if needed
-          colorId: "", // Reinstated colorId
-          sizeId: "", // Reinstated sizeId
-          // isFeatured and isArchived are handled programmatically
+          categoryId: "",
         },
   });
 
@@ -119,7 +104,7 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
         // Update existing base product
         await axios.patch(
           `/api/${params.storeId}/products/${initialData.id}`,
-          submissionData
+          submissionData,
         );
       } else {
         // Create new base product
@@ -169,7 +154,7 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
                     onRemove={(url) =>
                       field.onChange([
                         ...(field.value || []).filter(
-                          (current) => current.url !== url
+                          (current) => current.url !== url,
                         ), // Ensure field.value is array
                       ])
                     }
@@ -247,73 +232,6 @@ export const GeneratorBaseForm: React.FC<GeneratorBaseFormProps> = ({
                 </FormItem>
               )}
             />
-            {/* Reinstated Size FormField */}
-            <FormField
-              control={form.control}
-              name="sizeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Size</FormLabel>
-                  <Select
-                    disabled={loading}
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          defaultValue={field.value}
-                          placeholder="Select a Size"
-                        ></SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {sizes.map((size) => (
-                        <SelectItem key={size.id} value={size.id}>
-                          {size.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {/* Reinstated Color FormField */}
-            <FormField
-              control={form.control}
-              name="colorId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Color</FormLabel>
-                  <Select
-                    disabled={loading}
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          defaultValue={field.value}
-                          placeholder="Select a Color"
-                        ></SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {colors.map((color) => (
-                        <SelectItem key={color.id} value={color.id}>
-                          {color.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {/* isFeatured and isArchived are handled programmatically */}
           </div>
 
           <Button disabled={loading} className="ml-auto" type="submit">

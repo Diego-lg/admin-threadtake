@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth"; // Updated import path
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ storeId: string }> }
+  { params }: { params: Promise<{ storeId: string }> },
 ) {
   try {
     const { storeId } = await params;
@@ -58,40 +58,38 @@ export async function POST(
     }
 
     // --- Determine default Color ID if not provided ---
-    let finalColorId = providedColorId;
-    if (!finalColorId) {
+    let finalColorId: string | null | undefined = providedColorId;
+    if (!finalColorId && providedColorId !== null) {
       const defaultColor = await prismadb.color.findFirst({
         where: { storeId },
         orderBy: { createdAt: "asc" }, // Or any other logic to pick a default
       });
       if (!defaultColor) {
-        return new NextResponse(
-          "Default color not found for this store. Please create a color first.",
-          { status: 400 }
-        );
+        // Don't throw error, allow null
+        finalColorId = null;
+      } else {
+        finalColorId = defaultColor.id;
       }
-      finalColorId = defaultColor.id;
       console.log(
-        `[PRODUCTS_POST] No colorId provided, using default: ${finalColorId}`
+        `[PRODUCTS_POST] No colorId provided, using default: ${finalColorId}`,
       );
     }
 
     // --- Determine default Size ID if not provided ---
-    let finalSizeId = providedSizeId;
-    if (!finalSizeId) {
+    let finalSizeId: string | null | undefined = providedSizeId;
+    if (!finalSizeId && providedSizeId !== null) {
       const defaultSize = await prismadb.size.findFirst({
         where: { storeId },
         orderBy: { createdAt: "asc" }, // Or any other logic to pick a default
       });
       if (!defaultSize) {
-        return new NextResponse(
-          "Default size not found for this store. Please create a size first.",
-          { status: 400 }
-        );
+        // Don't throw error, allow null
+        finalSizeId = null;
+      } else {
+        finalSizeId = defaultSize.id;
       }
-      finalSizeId = defaultSize.id;
       console.log(
-        `[PRODUCTS_POST] No sizeId provided, using default: ${finalSizeId}`
+        `[PRODUCTS_POST] No sizeId provided, using default: ${finalSizeId}`,
       );
     }
 
@@ -133,7 +131,7 @@ export async function POST(
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ storeId: string }> }
+  { params }: { params: Promise<{ storeId: string }> },
 ) {
   try {
     const { storeId } = await params; // Note: storeId might not be relevant for community designs

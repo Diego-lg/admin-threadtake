@@ -14,6 +14,7 @@ declare module "next-auth" {
       profileCardBackground?: string | null;
       bio?: string | null;
       portfolioUrl?: string | null;
+      hasCompletedProfile?: boolean; // Profile completion status
     } & DefaultSession["user"];
   }
 
@@ -40,5 +41,6 @@ declare module "next-auth/jwt" {
     profileCardBackground?: string | null;
     bio?: string | null;
     portfolioUrl?: string | null;
+    hasCompletedProfile?: boolean; // Profile completion status
   }
 }

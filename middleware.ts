@@ -140,7 +140,7 @@ export async function middleware(req: NextRequest) {
 
     // --- Step 3: Authentication/Authorization Handling for NON-API routes ---
     // Define protected paths (adjust as needed)
-    const protectedPaths = ["/", "/dashboard", "/admin"]; // Example protected paths (Added root '/')
+    const protectedPaths = ["/", "/dashboard", "/admin", "/generator"]; // Added /generator as protected
     const requiresAuth = protectedPaths.some((path) =>
       pathname.startsWith(path),
     );

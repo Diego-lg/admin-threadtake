@@ -97,6 +97,8 @@ export const authOptions: AuthOptions = {
           token.profileCardBackground = dbUser.profileCardBackground;
           token.bio = dbUser.bio;
           token.portfolioUrl = dbUser.portfolioUrl;
+          // Profile completion check: user must have a name set
+          token.hasCompletedProfile = !!dbUser.name;
         } else {
           // This case should ideally not happen if the adapter is working correctly.
           // Fallback to the ID from the provider, but log a warning.
@@ -116,6 +118,8 @@ export const authOptions: AuthOptions = {
         }
         if (session.name !== undefined) {
           token.name = session.name;
+          // Update profile completion status when name is set
+          token.hasCompletedProfile = !!session.name;
         }
         if (session.image !== undefined) {
           token.image = session.image;
@@ -168,6 +172,9 @@ export const authOptions: AuthOptions = {
           | null;
         session.user.bio = token.bio as string | null;
         session.user.portfolioUrl = token.portfolioUrl as string | null;
+        session.user.hasCompletedProfile = token.hasCompletedProfile as
+          | boolean
+          | undefined;
 
         // If you need the raw JWT string on the client, you would add it here
         // However, this is generally discouraged for security reasons.

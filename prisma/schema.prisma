@@ -86,17 +86,17 @@ model Product {
   price         Decimal
   isFeatured    Boolean       @default(false)
   isArchived    Boolean       @default(false)
-  sizeId        String
-  colorId       String
+  sizeId        String?
+  colorId       String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   savedDesignId String?       @unique
   images        Image[]
   orderItems    OrderItem[]
   category      Category      @relation("CategoryToProduct", fields: [categoryId], references: [id])
-  color         Color         @relation(fields: [colorId], references: [id])
+  color         Color?        @relation(fields: [colorId], references: [id])
   savedDesign   SavedDesign?  @relation("ProductForDesign", fields: [savedDesignId], references: [id])
-  size          Size          @relation(fields: [sizeId], references: [id])
+  size          Size?         @relation(fields: [sizeId], references: [id])
   store         Store         @relation("StoreToProduct", fields: [storeId], references: [id])
   SavedDesign   SavedDesign[]
 
