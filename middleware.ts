@@ -33,7 +33,9 @@ export async function middleware(req: NextRequest) {
       console.log(
         `[Middleware] Skipping WebSocket upgrade request for ${req.nextUrl.pathname}`,
       );
-      return NextResponse.next();
+      // Return undefined to allow the upgrade request to pass through
+      // without calling NextResponse.next() which causes bind errors
+      return;
     }
 
     const origin = req.headers.get("origin");
