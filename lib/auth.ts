@@ -1,6 +1,7 @@
 import { AuthOptions } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import GoogleProvider from "next-auth/providers/google";
+import * as jose from "jose";
 
 import prismadb from "@/lib/prismadb";
 import { UserRole } from "@prisma/client";
@@ -10,6 +11,18 @@ import { UserRole } from "@prisma/client";
 // If not set, email restriction is disabled (all authenticated users can access)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase();
 
+// Get and validate the secret - throw error if missing
+function getSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error("NEXTAUTH_SECRET environment variable is not set");
+  }
+  return secret;
+}
+
+const secret = getSecret();
+const secretKey = new TextEncoder().encode(secret);
+
 // Define authOptions here
 export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prismadb),
@@ -17,14 +30,42 @@ export const authOptions: AuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
   debug: process.env.NODE_ENV === "development",
   session: {
-    strategy: "database",
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: secret,
+  jwt: {
+    // Use the jose library for encoding/decoding JWTs
+    encode: async ({ token }) => {
+      return await new jose.SignJWT(token as jose.JWTPayload)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime("30d")
+        .sign(secretKey);
+    },
+    decode: async ({ token }) => {
+      try {
+        const { payload } = await jose.jwtVerify(
+          token as string,
+          secretKey
+        );
+        return payload;
+      } catch {
+        return null;
+      }
+    },
+  },
   cookies: {
     sessionToken: {
       name:
@@ -44,6 +85,23 @@ export const authOptions: AuthOptions = {
     signIn: "/login",
   },
   callbacks: {
+    async jwt({ token, user, account, trigger, session }) {
+      // Initial sign in
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
+      }
+
+      // Handle session updates
+      if (trigger === "update" && session) {
+        token.name = session.name;
+        token.picture = session.picture;
+      }
+
+      return token;
+    },
     async signIn({ user, account, profile }) {
       // Admin email restriction
       if (ADMIN_EMAIL && user.email?.toLowerCase() !== ADMIN_EMAIL) {
@@ -68,28 +126,34 @@ export const authOptions: AuthOptions = {
 
       return true;
     },
-    async session({ session, user }) {
-      console.log("[NextAuth Session Callback] Loading session from database");
+    async session({ session, token }) {
+      console.log("[NextAuth Session Callback] Loading session from token");
 
-      // Fetch fresh user data from database
-      const dbUser = await prismadb.user.findUnique({
-        where: { id: user.id },
-      });
+      if (token && session.user) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.name = token.name as string | null;
+        session.user.image = token.picture as string | null;
 
-      if (dbUser && session.user) {
-        session.user.id = dbUser.id;
-        session.user.name = dbUser.name;
-        session.user.email = dbUser.email;
-        session.user.image = dbUser.image;
-        session.user.role = dbUser.role as UserRole;
-        session.user.profileCardBackground = dbUser.profileCardBackground;
-        session.user.bio = dbUser.bio;
-        session.user.portfolioUrl = dbUser.portfolioUrl;
-        session.user.hasCompletedProfile = !!dbUser.name;
+        // Fetch additional user data from database for role and other fields
+        try {
+          const dbUser = await prismadb.user.findUnique({
+            where: { id: token.id as string },
+          });
 
-        console.log(
-          `[NextAuth] Session loaded for user: ${dbUser.email}, role: ${dbUser.role}`,
-        );
+          if (dbUser) {
+            session.user.role = dbUser.role as UserRole;
+            session.user.profileCardBackground = dbUser.profileCardBackground;
+            session.user.bio = dbUser.bio;
+            session.user.portfolioUrl = dbUser.portfolioUrl;
+            session.user.hasCompletedProfile = !!dbUser.name;
+            console.log(
+              `[NextAuth] Session loaded for user: ${dbUser.email}, role: ${dbUser.role}`,
+            );
+          }
+        } catch (error) {
+          console.error("[NextAuth] Error fetching user from database:", error);
+        }
       }
 
       return session;
@@ -102,7 +166,7 @@ export const authOptions: AuthOptions = {
       }
     },
     async signOut({ session }) {
-      console.log("[NextAuth] User signed out, session deleted from DB");
+      console.log("[NextAuth] User signed out");
     },
   },
 };

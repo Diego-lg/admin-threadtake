@@ -1,40 +1,70 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt"; // Use getToken to check session manually
 import { UserRole } from "@prisma/client";
 import { withR2AccessControl } from "./middleware/r2-access-control";
-import { R2AuthEnhancement } from "./middleware/r2-auth-enhancement";
 import { R2Security } from "./lib/r2-security";
-import { R2AuditLogger } from "./lib/r2-audit-logger";
-import { R2SecurityMonitor } from "./lib/r2-security-monitor";
+import * as jose from "jose";
 
 // Define allowed origins
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        //treadheaven
         "https://www.threadtake.com",
         "https://threadtake.com",
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
       ].filter(Boolean) as string[])
-    : ["http://localhost:3001", "http://localhost:3000"]; // Ensure frontend origin is listed
+    : ["http://localhost:3001", "http://localhost:3000"];
 
-const secret = process.env.NEXTAUTH_SECRET; // Needed for getToken
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+const secretKey = NEXTAUTH_SECRET ? new TextEncoder().encode(NEXTAUTH_SECRET) : null;
+
+// Helper function to decode JWT token from cookie
+async function getSessionFromCookie(req: NextRequest): Promise<any | null> {
+  if (!secretKey) {
+    console.error("[Middleware] NEXTAUTH_SECRET not configured");
+    return null;
+  }
+
+  const cookieHeader = req.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+
+  // Try to find the next-auth session token cookie
+  const nextAuthCookie = cookieHeader
+    .split(";")
+    .find((c) => c.trim().startsWith("next-auth.session-token=") || c.trim().startsWith("__Secure-next-auth.session-token="));
+
+  if (!nextAuthCookie) {
+    return null;
+  }
+
+  const token = nextAuthCookie.split("=")[1]?.trim();
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const { payload } = await jose.jwtVerify(token, secretKey);
+    return payload;
+  } catch (err) {
+    console.error("[Middleware] JWT verification failed:", err);
+    return null;
+  }
+}
 
 // --- Main Middleware Function ---
 export async function middleware(req: NextRequest) {
   console.log(
     `[Middleware START] Method: ${req.method}, Path: ${req.nextUrl.pathname}`,
-  ); // <-- ADD THIS LOG
+  );
 
   try {
-    // Skip WebSocket upgrade requests to prevent bind context errors
+    // Skip WebSocket upgrade requests
     const upgrade = req.headers.get("upgrade");
     if (upgrade?.toLowerCase() === "websocket") {
       console.log(
         `[Middleware] Skipping WebSocket upgrade request for ${req.nextUrl.pathname}`,
       );
-      // Return undefined to allow the upgrade request to pass through
-      // without calling NextResponse.next() which causes bind errors
       return;
     }
 
@@ -44,7 +74,6 @@ export async function middleware(req: NextRequest) {
     const isAllowedOrigin = origin && allowedOrigins.includes(origin);
 
     // --- R2 Security Check ---
-    // Apply R2 access control middleware to R2 API routes
     if (pathname.startsWith("/api/r2/")) {
       const r2SecurityResponse = await withR2AccessControl(req);
       if (r2SecurityResponse) {
@@ -53,7 +82,7 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    // --- Step 1: Handle CORS Preflight (OPTIONS) for ALL API routes ---
+    // --- Step 1: Handle CORS Preflight (OPTIONS) ---
     if (isApiRoute && req.method === "OPTIONS") {
       if (isAllowedOrigin) {
         console.log(
@@ -70,56 +99,27 @@ export async function middleware(req: NextRequest) {
           "Access-Control-Allow-Headers",
           "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
         );
-        return response; // Return immediately
+        return response;
       } else {
         if (origin)
           console.warn(
             `[Middleware] Blocked OPTIONS request to ${pathname} from origin: ${origin}`,
           );
-        return new NextResponse(null, { status: 204 }); // Return simple response
+        return new NextResponse(null, { status: 204 });
       }
     }
 
-    // --- Step 2: Handle Actual API Requests (GET, POST, etc.) ---
-    // Add CORS headers to the outgoing response if origin is allowed
+    // --- Step 2: Handle Actual API Requests ---
     if (isApiRoute && req.method !== "OPTIONS") {
-      // --- DIAGNOSTIC: Try getToken early for my-designs ---
-      if (pathname === "/api/designs/my-designs") {
-        console.log(
-          "[Middleware] Attempting diagnostic getToken for /api/designs/my-designs...",
-        );
-        // --- Log raw cookie header seen by middleware (REDACTED) ---
-        const rawCookieHeader = req.headers.get("cookie");
-        const hasAuthCookie =
-          rawCookieHeader && rawCookieHeader.includes("next-auth");
-        console.log(`[Middleware] Auth cookie present: ${hasAuthCookie}`);
-        // --- End log raw cookie header ---
-        try {
-          const diagnosticToken = await getToken({ req, secret });
-          if (diagnosticToken) {
-            console.log(
-              `[Middleware] Diagnostic getToken: Authentication verified`,
-            );
-          } else {
-            console.error("[Middleware] Diagnostic getToken returned NULL.");
-          }
-        } catch (err) {
-          console.error("[Middleware] Error during diagnostic getToken:", err);
-        }
-      }
-      // --- END DIAGNOSTIC ---
-
-      // Let the request proceed to the API route handler and await its response
+      // Let the request proceed to the API route handler
       const response = await NextResponse.next();
 
-      // Check if origin is allowed and add headers to the final response
+      // Check if origin is allowed and add headers
       if (isAllowedOrigin && response && origin) {
-        // Clone the response to safely modify headers
         const newResponse = new NextResponse(response.body, response);
         newResponse.headers.set("Access-Control-Allow-Origin", origin);
         newResponse.headers.set("Access-Control-Allow-Credentials", "true");
 
-        // Add security headers to all API responses
         const securityHeaders = R2Security.generateSecurityHeaders();
         for (const [key, value] of Object.entries(securityHeaders)) {
           newResponse.headers.set(key, value);
@@ -128,89 +128,81 @@ export async function middleware(req: NextRequest) {
         console.log(
           `[Middleware] Added CORS and security headers to final response for ${pathname} from origin: ${origin}`,
         );
-        return newResponse; // Return the modified response
+        return newResponse;
       } else if (!isAllowedOrigin && origin) {
         console.warn(
           `[Middleware] Blocked API request (${req.method}) to ${pathname} from origin: ${origin}`,
         );
-        // Optionally return a 403 Forbidden here if needed for non-allowed origins
-        // return new NextResponse("Forbidden: Invalid Origin", { status: 403 });
       }
-      // Return the original response if origin wasn't allowed or response object is missing
       return response;
     }
 
     // --- Step 3: Authentication/Authorization Handling for NON-API routes ---
-    // Define protected paths (adjust as needed)
-    const protectedPaths = ["/", "/dashboard", "/admin", "/generator"]; // Added /generator as protected
+    const protectedPaths = ["/", "/dashboard", "/admin", "/generator"];
     const requiresAuth = protectedPaths.some((path) =>
       pathname.startsWith(path),
     );
 
-    // --- Log path and auth requirement ---
     console.log(
       `[Middleware] Path: ${pathname}, Requires Auth: ${requiresAuth}`,
     );
 
     if (requiresAuth) {
       console.log(
-        `[Middleware] Checking token for protected path: ${pathname}`,
-      ); // <-- ADD THIS LOG
-      if (!secret) {
-        console.error("Missing NEXTAUTH_SECRET environment variable");
-        return new NextResponse("Server configuration error", { status: 500 });
-      }
+        `[Middleware] Checking session for protected path: ${pathname}`,
+      );
 
-      const token = await getToken({ req, secret });
+      // Use our custom JWT parsing instead of getServerSession
+      const session = await getSessionFromCookie(req);
       console.log(
-        `[Middleware] Token verification: ${token ? "valid" : "null"}`,
-      ); // <-- ADD THIS LOG
+        `[Middleware] Session verification: ${session ? "valid" : "null"}`,
+      );
 
-      // If no token, redirect to login
-      if (!token) {
+      // If no session, redirect to login
+      if (!session) {
         const url = req.nextUrl.clone();
-        url.pathname = "/login"; // Your login page path
-        url.searchParams.set("callbackUrl", req.nextUrl.pathname); // Optional: redirect back after login
-        console.log("[Middleware] No token found, redirecting to login.");
+        url.pathname = "/login";
+        url.searchParams.set("callbackUrl", req.nextUrl.pathname);
+        console.log("[Middleware] No session found, redirecting to login.");
         return NextResponse.redirect(url);
       }
 
       // Check if user email matches admin email
       const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-      const userEmail = token.email?.toLowerCase();
+      const userEmail = session.email?.toLowerCase();
       if (adminEmail && userEmail !== adminEmail) {
         console.log(
           `[Middleware] Unauthorized user email: ${userEmail}, admin email: ${adminEmail}`,
         );
-        // Clear the session cookie and redirect to login
         const response = NextResponse.redirect(new URL("/login", req.url));
         response.cookies.delete("next-auth.session-token");
         response.cookies.delete("__Secure-next-auth.session-token");
         return response;
       }
 
-      // Example: Check for ADMIN role for specific paths
-      if (pathname.startsWith("/admin") && token.role !== UserRole.ADMIN) {
+      // Check for ADMIN role
+      if (
+        pathname.startsWith("/admin") &&
+        session.role !== UserRole.ADMIN
+      ) {
         console.log("[Middleware] Unauthorized access attempt to /admin.");
         const url = req.nextUrl.clone();
-        url.pathname = "/unauthorized"; // Or redirect to home or login
-        return NextResponse.redirect(url); // Redirect if not ADMIN
+        url.pathname = "/unauthorized";
+        return NextResponse.redirect(url);
       }
 
-      // If token exists and role is sufficient, allow access
       console.log(
         `[Middleware] Auth check passed for protected route: ${pathname}`,
-      ); // <-- MODIFIED LOG
-      return NextResponse.next(); // Allow access to the protected page
+      );
+      return NextResponse.next();
     } else {
-      // <-- ADD THIS ELSE BLOCK
       console.log(
         `[Middleware] Path not protected or auth not required, allowing access: ${pathname}`,
-      ); // <-- ADD THIS LOG
+      );
     }
 
-    // --- Step 4: Default - Allow all other requests (public pages, etc.) ---
-    console.log(`[Middleware END] Allowing request for: ${pathname}`); // <-- ADD THIS LOG
+    // --- Step 4: Default - Allow all other requests ---
+    console.log(`[Middleware END] Allowing request for: ${pathname}`);
     return NextResponse.next();
   } catch (error) {
     console.error("[Middleware] Unexpected error:", error);
@@ -224,15 +216,7 @@ export async function middleware(req: NextRequest) {
 // --- Middleware Config (Matcher) ---
 export const config = {
   matcher: [
-    /*
-     * Explicitly match all API routes for CORS handling.
-     */
     "/api/:path*",
-    /*
-     * Match other paths for potential authentication, excluding static assets,
-     * public auth pages, and other specific exclusions.
-     * The middleware function itself determines if auth is needed.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|images/|login|register|unauthorized).*)", // Added /unauthorized exclusion
+    "/((?!_next/static|_next/image|favicon.ico|images/|login|register|unauthorized).*)",
   ],
 };
