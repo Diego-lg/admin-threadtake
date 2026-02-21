@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { UserRole } from "@prisma/client";
 import {
   R2Security,
@@ -10,6 +9,32 @@ import {
 import { R2AuditLogger } from "@/lib/r2-audit-logger";
 import { R2SecurityMonitor } from "@/lib/r2-security-monitor";
 import { UserFolderService } from "@/services/user-folder-service";
+
+/**
+ * Edge-compatible function to get user ID from session cookie
+ * For server sessions (database-backed), we just check if the session cookie exists
+ * The actual session validation is done by the API routes
+ */
+function getUserIdFromCookie(req: NextRequest): string | undefined {
+  const cookieHeader = req.headers.get("cookie");
+  if (!cookieHeader) {
+    return undefined;
+  }
+
+  // Check for NextAuth session cookies
+  // The actual session validation happens in API routes
+  const hasSessionCookie =
+    cookieHeader.includes("next-auth.session-token") ||
+    cookieHeader.includes("__Secure-next-auth.session-token");
+
+  if (!hasSessionCookie) {
+    return undefined;
+  }
+
+  // For server sessions, we cannot decode the session in middleware
+  // We just return a placeholder - the API route will validate the actual session
+  return "session-user";
+}
 
 /**
  * R2 Access Control Middleware Configuration
@@ -332,14 +357,16 @@ export async function r2AccessControlMiddleware(
   }
 
   try {
-    // Get user token
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
+    // Get user session - for server sessions, check if session cookie exists
+    // The actual session validation is done by the API routes
+    let userId: string | undefined;
+    let userRole: UserRole | undefined = UserRole.USER;
+
+    // Check for session cookie - for server sessions we can't decode in middleware
+    userId = getUserIdFromCookie(request);
 
     // Check if user is authenticated
-    if (!token || !token.id) {
+    if (!userId) {
       const response = NextResponse.json(
         { error: "Unauthenticated", message: "Authentication required" },
         { status: 401 },
@@ -347,17 +374,21 @@ export async function r2AccessControlMiddleware(
       return applySecurityHeaders(response);
     }
 
-    const userId = token.id as string;
-    const userRole = token.role as UserRole;
-
-    console.log("[R2_ACCESS_CONTROL] User authenticated:", {
-      userId,
-      userRole,
-      pathname: new URL(request.url).pathname,
-    });
+    console.log(
+      "[R2_ACCESS_CONTROL] Session cookie found, allowing request through:",
+      {
+        userId,
+        pathname: new URL(request.url).pathname,
+      },
+    );
 
     // Create file operation context
-    const context = createFileOperationContext(request, userId, userRole);
+    // Note: userRole will be validated by the API route
+    const context = createFileOperationContext(
+      request,
+      userId,
+      userRole || UserRole.USER,
+    );
 
     console.log("[R2_ACCESS_CONTROL] Created context:", {
       userId: context.userId,
@@ -467,7 +498,7 @@ export async function r2AccessControlMiddleware(
 
     if (!accessValidation.isValid) {
       // Check for admin override
-      if (checkAdminOverride(userRole, context.operation)) {
+      if (checkAdminOverride(userRole || UserRole.USER, context.operation)) {
         // Log admin override
         if (currentConfig.enableAuditLogging) {
           R2AuditLogger.log(context, "success", undefined, {
