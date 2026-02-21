@@ -24,39 +24,44 @@ export async function processMockupJob(jobId: string): Promise<void> {
     // Step 1: Prepare design data (20% progress)
     await MockupJobManager.updateProgress(jobId, 20, "Preparing design data");
 
-    // Validate that the required entities exist
-    if (!job.productId || !job.colorId || !job.sizeId) {
-      throw new Error("Missing required product, color, or size ID");
+    // Validate that product exists (color and size are optional for mockup generation)
+    if (!job.productId) {
+      throw new Error("Missing required product ID");
     }
 
-    // Check if the entities exist in the database
-    const [product, color, size] = await Promise.all([
-      prismadb.product.findUnique({ where: { id: job.productId } }),
-      prismadb.color.findUnique({ where: { id: job.colorId } }),
-      prismadb.size.findUnique({ where: { id: job.sizeId } }),
-    ]);
+    // Check if product exists in the database
+    const product = await prismadb.product.findUnique({
+      where: { id: job.productId },
+    });
 
     if (!product) {
       throw new Error(`Product with ID ${job.productId} not found`);
     }
-    if (!color) {
-      throw new Error(`Color with ID ${job.colorId} not found`);
-    }
-    if (!size) {
-      throw new Error(`Size with ID ${job.sizeId} not found`);
-    }
+
+    // Color and size are optional - they can be null for mockup generation
+    const color = job.colorId
+      ? await prismadb.color.findUnique({
+          where: { id: job.colorId },
+        })
+      : null;
+
+    const size = job.sizeId
+      ? await prismadb.size.findUnique({
+          where: { id: job.sizeId },
+        })
+      : null;
 
     // Don't save the design immediately - wait until mockups are generated
     // This ensures the mockup image is available when the design is first displayed
     console.log(
-      `[MOCKUP_WORKER] Waiting to save design ${jobId} until mockups are generated`
+      `[MOCKUP_WORKER] Waiting to save design ${jobId} until mockups are generated`,
     );
 
     // Step 2: Generate mockups (20-80% progress)
     await MockupJobManager.updateProgress(
       jobId,
       30,
-      "Starting mockup generation"
+      "Starting mockup generation",
     );
 
     console.log(`[MOCKUP_WORKER] Calling mockup service for job ${jobId}`);
@@ -77,19 +82,19 @@ export async function processMockupJob(jobId: string): Promise<void> {
         responseType: "json",
         maxContentLength: 50 * 1024 * 1024,
         maxBodyLength: 50 * 1024 * 1024,
-      }
+      },
     );
 
     await MockupJobManager.updateProgress(
       jobId,
       70,
-      "Mockups generated, processing images"
+      "Mockups generated, processing images",
     );
 
     const mockupResults = mockupResponse.data;
     console.log(
       `[MOCKUP_WORKER] Mockups generated for job ${jobId}:`,
-      mockupResults
+      mockupResults,
     );
 
     // Step 3: Process and store mockups in user-specific folders
@@ -103,7 +108,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
       await MockupJobManager.updateProgress(
         jobId,
         80,
-        "Storing mockup images in user folders"
+        "Storing mockup images in user folders",
       );
 
       // Ensure user folder exists
@@ -127,14 +132,14 @@ export async function processMockupJob(jobId: string): Promise<void> {
               job.userId,
               job.designId,
               mockupType,
-              "png" // Assume PNG format for mockups
+              "png", // Assume PNG format for mockups
             );
 
             // Download the mockup image
             const response = await fetch(mockupUrl);
             if (!response.ok) {
               throw new Error(
-                `Failed to download mockup: ${response.statusText}`
+                `Failed to download mockup: ${response.statusText}`,
               );
             }
 
@@ -165,7 +170,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
 
             if (!uploadResponse.ok) {
               throw new Error(
-                `Failed to upload mockup to R2: ${uploadResponse.statusText}`
+                `Failed to upload mockup to R2: ${uploadResponse.statusText}`,
               );
             }
 
@@ -174,15 +179,15 @@ export async function processMockupJob(jobId: string): Promise<void> {
 
             console.log(
               `[MOCKUP_WORKER] Stored ${mockupType} mockup for user ${job.userId}, design ${job.designId}:`,
-              { key: pathInfo.key, url: pathInfo.publicUrl }
+              { key: pathInfo.key, url: pathInfo.publicUrl },
             );
           } catch (error: any) {
             console.error(
               `[MOCKUP_WORKER] Failed to store ${mockupType} mockup for job ${jobId}:`,
-              error
+              error,
             );
             processedMockupResults.errors.push(
-              `Failed to store ${mockupType} mockup: ${error.message}`
+              `Failed to store ${mockupType} mockup: ${error.message}`,
             );
           }
         }
@@ -199,19 +204,23 @@ export async function processMockupJob(jobId: string): Promise<void> {
     await MockupJobManager.updateProgress(
       jobId,
       90,
-      "Preparing to save design"
+      "Preparing to save design",
     );
 
     // Step 4: Save the design with mockup results (100% progress)
+    // Color and size are optional - use values from job or undefined
     let savedDesign = null;
+    const designColorId = job.colorId;
+    const designSizeId = job.sizeId;
+
     if (mockupImageUrl) {
       // Only save the design if mockup generation was successful
       savedDesign = await prismadb.savedDesign.create({
         data: {
           userId: job.userId,
           productId: job.productId,
-          colorId: job.colorId,
-          sizeId: job.sizeId,
+          colorId: designColorId,
+          sizeId: designSizeId,
           designImageUrl: mockupImageUrl, // Use mockup image for display in UI
           mockupImageUrl: mockupImageUrl, // Save mockup image immediately
           description: job.description || "Custom design",
@@ -228,7 +237,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
       });
 
       console.log(
-        `[MOCKUP_WORKER] ✅ Saved design ${savedDesign.id} with mockup for job ${jobId}`
+        `[MOCKUP_WORKER] ✅ Saved design ${savedDesign.id} with mockup for job ${jobId}`,
       );
     } else {
       // If mockup generation failed, still save the design but without mockup
@@ -236,8 +245,8 @@ export async function processMockupJob(jobId: string): Promise<void> {
         data: {
           userId: job.userId,
           productId: job.productId,
-          colorId: job.colorId,
-          sizeId: job.sizeId,
+          colorId: designColorId,
+          sizeId: designSizeId,
           designImageUrl: job.imageUrl, // Use original image as fallback when no mockup
           mockupImageUrl: null, // No mockup available
           description:
@@ -255,7 +264,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
       });
 
       console.log(
-        `[MOCKUP_WORKER] ⚠️ Saved design ${savedDesign.id} without mockup for job ${jobId}`
+        `[MOCKUP_WORKER] ⚠️ Saved design ${savedDesign.id} without mockup for job ${jobId}`,
       );
     }
 
@@ -263,10 +272,10 @@ export async function processMockupJob(jobId: string): Promise<void> {
     await MockupJobManager.completeJob(
       jobId,
       processedMockupResults,
-      savedDesign.id
+      savedDesign.id,
     );
     console.log(
-      `[MOCKUP_WORKER] ✅ Completed job ${jobId} with design ${savedDesign.id}`
+      `[MOCKUP_WORKER] ✅ Completed job ${jobId} with design ${savedDesign.id}`,
     );
   } catch (error: any) {
     console.error(`[MOCKUP_WORKER] ❌ Failed to process job ${jobId}:`, error);
@@ -305,7 +314,7 @@ export function startMockupWorker(): void {
 
     console.log(
       "[MOCKUP_WORKER] Interval set successfully with ID:",
-      intervalId
+      intervalId,
     );
   } catch (error) {
     console.error("[MOCKUP_WORKER] Error setting up interval:", error);

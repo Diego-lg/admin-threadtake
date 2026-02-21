@@ -1,67 +1,29 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import prismadb from "@/lib/prismadb";
-import { UserRole } from "@prisma/client";
 import { MockupJobManager } from "@/lib/mockup-job-manager";
 import { processJobImmediately } from "@/lib/mockup-worker";
 import { UserFolderService } from "@/services/user-folder-service";
 import { v4 as uuidv4 } from "uuid";
-
-// Define the expected shape of the NextAuth token
-interface NextAuthToken {
-  id: string;
-  email: string;
-  role: UserRole;
-  name?: string | null;
-  image?: string | null;
-  accessToken?: string;
-  refreshToken?: string;
-  accessTokenExpiresAt?: number;
-}
 
 // POST /api/designs/save-with-mockups-async - Create a new saved design with async mockup generation
 export async function POST(req: Request) {
   console.log("[DESIGNS_SAVE_ASYNC] Request received");
 
   try {
-    // 1. Authenticate the user
-    const authHeader = req.headers.get("authorization");
+    // 1. Authenticate the user using getServerSession
+    const session = await getServerSession(authOptions);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
-        status: 401,
-      });
+    if (!session?.user?.id) {
+      console.log(
+        "[DESIGNS_SAVE_ASYNC] Authentication failed: No valid session",
+      );
+      return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    const token = authHeader.split(" ")[1];
-    let decodedPayload: NextAuthToken | null = null;
-
-    // Verify token (simplified for this example)
-    try {
-      const nextAuthSecret = process.env.NEXTAUTH_SECRET;
-      if (nextAuthSecret) {
-        const nextAuthToken = await getToken({
-          req: req as any,
-          secret: nextAuthSecret,
-          secureCookie: process.env.NODE_ENV === "production",
-        });
-
-        if (nextAuthToken) {
-          decodedPayload = nextAuthToken as NextAuthToken;
-        }
-      }
-    } catch (error) {
-      console.error("[DESIGNS_SAVE_ASYNC] Token verification error:", error);
-    }
-
-    if (!decodedPayload) {
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    const userId = decodedPayload.id;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
+    const userId = session.user.id;
+    console.log(`[DESIGNS_SAVE_ASYNC] Authenticated user: ${userId}`);
 
     // 2. Parse request body
     const body = await req.json();
@@ -81,6 +43,16 @@ export async function POST(req: Request) {
       logoTargetPart,
     } = body;
 
+    // Validate required fields for mockup generation
+    // Product ID is required, but colorId and sizeId are optional
+    if (!productId) {
+      console.log("[DESIGNS_SAVE_ASYNC] Validation failed: Missing productId");
+      return new NextResponse(
+        "Product ID is required for saving designs with mockups",
+        { status: 400 },
+      );
+    }
+
     if (!designImageUrl) {
       return new NextResponse("Design image URL is required", { status: 400 });
     }
@@ -89,7 +61,7 @@ export async function POST(req: Request) {
     console.log("  - designImageUrl (for mockups):", designImageUrl);
     console.log(
       "  - canvasImageUrl (for display):",
-      canvasImageUrl || "Not provided"
+      canvasImageUrl || "Not provided",
     );
     console.log("[DESIGNS_SAVE_ASYNC] Creating mockup job for user:", userId);
 
@@ -132,7 +104,7 @@ export async function POST(req: Request) {
       "[DESIGNS_SAVE_ASYNC] Created job:",
       job.id,
       "for design:",
-      designId
+      designId,
     );
 
     return NextResponse.json({

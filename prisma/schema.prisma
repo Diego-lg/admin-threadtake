@@ -241,8 +241,8 @@ model SavedDesign {
   userId             String
   status             DesignStatus @default(PENDING)
   productId          String
-  colorId            String
-  sizeId             String
+  colorId            String? // Optional - mockup generation doesn't require color
+  sizeId             String? // Optional - mockup generation doesn't require size
   customText         String?
   designImageUrl     String?
   mockupImageUrl     String?

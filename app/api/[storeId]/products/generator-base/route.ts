@@ -107,14 +107,76 @@ export async function GET(
 
     // Ensure price is formatted correctly (Prisma returns Decimal)
     // Also preserve sizeId and colorId in case the relations are null
-    const { size, color, ...productWithoutRelations } = baseProduct;
+    const { size, color, sizeId, colorId, ...productWithoutRelations } =
+      baseProduct;
+
+    // If size or color relations are null, try to get default size/color from the store
+    let finalSize = size;
+    let finalColor = color;
+    let finalSizeId = sizeId;
+    let finalColorId = colorId;
+
+    // If size is missing, try to get the first available size for the store
+    if (!finalSize || !finalSizeId) {
+      const defaultSize = await prismadb.size.findFirst({
+        where: { storeId },
+        orderBy: { createdAt: "asc" },
+      });
+      if (defaultSize) {
+        finalSize = defaultSize;
+        finalSizeId = defaultSize.id;
+      }
+    }
+
+    // If color is missing, try to get the first available color for the store
+    if (!finalColor || !finalColorId) {
+      const defaultColor = await prismadb.color.findFirst({
+        where: { storeId },
+        orderBy: { createdAt: "asc" },
+      });
+      if (defaultColor) {
+        finalColor = defaultColor;
+        finalColorId = defaultColor.id;
+      }
+    }
+
+    // If still no size/color, create placeholder objects with IDs
+    if (!finalSize && !finalSizeId) {
+      finalSizeId = "default-size";
+      finalSize = {
+        id: "default-size",
+        name: "Default",
+        value: "default",
+        storeId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+    if (!finalColor && !finalColorId) {
+      finalColorId = "default-color";
+      finalColor = {
+        id: "default-color",
+        name: "Default",
+        value: "#ffffff",
+        storeId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
     const formattedProduct = {
       ...productWithoutRelations,
       price: parseFloat(baseProduct.price.toString()),
-      // Include relations if they exist
-      size: size || null,
-      color: color || null,
+      sizeId: finalSizeId,
+      colorId: finalColorId,
+      // Include relations
+      size: finalSize,
+      color: finalColor,
     };
+
+    console.log(
+      `[GENERATOR_BASE_GET] Returning product with sizeId: ${finalSizeId}, colorId: ${finalColorId}`,
+    );
 
     return NextResponse.json(formattedProduct);
   } catch (error) {

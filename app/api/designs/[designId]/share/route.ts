@@ -1,46 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { updateSharingStatus } from "@/actions/saved-designs"; // Import the function
-
-const secret = process.env.NEXTAUTH_SECRET;
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { updateSharingStatus } from "@/actions/saved-designs";
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: { designId: string } }
+  req: Request,
+  { params }: { params: { designId: string } },
 ) {
   try {
     console.log(
-      `[API SHARE] Received POST request for design ${params.designId}`
+      `[API SHARE] Received POST request for design ${params.designId}`,
     );
 
-    // 1. Check if NEXTAUTH_SECRET is defined
-    if (!secret) {
-      console.error("[API SHARE] Missing NEXTAUTH_SECRET environment variable");
-      return new NextResponse("Server configuration error", { status: 500 });
-    }
+    // 1. Get session using getServerSession
+    console.log("[API SHARE] Attempting to get session...");
+    const session = await getServerSession(authOptions);
 
-    // 2. Get token using NextAuth's getToken (reads from cookie or Authorization header)
-    console.log("[API SHARE] Attempting to get NextAuth token...");
-    const token = await getToken({ req, secret });
-
-    if (!token) {
-      console.error(
-        "[API SHARE] Authentication failed: getToken returned NULL"
-      );
+    if (!session?.user?.id) {
+      console.error("[API SHARE] Authentication failed: No valid session");
       return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    // 3. Extract user ID from token
-    const userIdFromToken = token?.id || token?.sub;
-
-    if (!userIdFromToken) {
-      console.error(
-        "[API SHARE] Authentication failed: userIdFromToken is missing"
-      );
-      return new NextResponse("Unauthenticated", { status: 401 });
-    }
-
-    const userId = userIdFromToken as string;
+    const userId = session.user.id;
     console.log(`[API SHARE] Authenticated user: ${userId}`);
 
     // 4. Get designId from params
@@ -56,7 +37,7 @@ export async function POST(
     if (typeof isShared !== "boolean") {
       return new NextResponse(
         "Invalid 'isShared' value in request body. Must be true or false.",
-        { status: 400 }
+        { status: 400 },
       );
     }
     console.log(`[API SHARE] Requested sharing status: ${isShared}`);
@@ -68,12 +49,12 @@ export async function POST(
     // 7. Return response based on the result
     if (result.success) {
       console.log(
-        `[API SHARE] Successfully updated sharing status for design ${designId}`
+        `[API SHARE] Successfully updated sharing status for design ${designId}`,
       );
       return NextResponse.json(result.data || { success: true }); // Return data if available
     } else {
       console.error(
-        `[API SHARE] Failed to update sharing status for design ${designId}: ${result.error}`
+        `[API SHARE] Failed to update sharing status for design ${designId}: ${result.error}`,
       );
       // Map internal errors to appropriate client responses
       if (result.error === "Unauthenticated") {

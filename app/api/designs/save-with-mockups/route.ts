@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import prismadb from "@/lib/prismadb";
-import { UserRole } from "@prisma/client";
 import axios from "axios";
-import jwt from "jsonwebtoken";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-
-// Define the expected shape of the NextAuth token
-interface NextAuthToken {
-  id: string;
-  email: string;
-  role: UserRole;
-  name?: string | null;
-  image?: string | null;
-  accessToken?: string;
-  refreshToken?: string;
-  accessTokenExpiresAt?: number;
-}
 
 // Helper function to get or create the general settings
 async function getGeneralSettings() {
@@ -42,7 +29,7 @@ async function uploadToR2(
   imageBuffer: Buffer,
   filename: string,
   userId: string,
-  folder: string = "mockups"
+  folder: string = "mockups",
 ): Promise<string> {
   try {
     // Create a unique filename with user folder structure
@@ -72,7 +59,7 @@ async function uploadToR2(
     });
 
     console.log(
-      `[R2_UPLOAD] Uploading ${fullFilename} to R2 bucket ${r2Bucket}`
+      `[R2_UPLOAD] Uploading ${fullFilename} to R2 bucket ${r2Bucket}`,
     );
 
     // Upload to R2
@@ -106,14 +93,14 @@ async function uploadToR2(
 async function processMockupImages(
   mockupResults: any,
   userId: string,
-  designId: string
+  designId: string,
 ): Promise<{ [key: string]: string }> {
   const processedMockups: { [key: string]: string } = {};
 
   try {
     console.log(
       "[MOCKUP_PROCESS] Starting mockup processing for user:",
-      userId
+      userId,
     );
 
     // Process different mockup types if they exist
@@ -131,7 +118,7 @@ async function processMockupImages(
 
       if (mockupUrl) {
         console.log(
-          `[MOCKUP_PROCESS] Processing ${mockupType} mockup: ${mockupUrl}`
+          `[MOCKUP_PROCESS] Processing ${mockupType} mockup: ${mockupUrl}`,
         );
 
         // Download the mockup image
@@ -146,7 +133,7 @@ async function processMockupImages(
 
         processedMockups[mockupType] = r2Url;
         console.log(
-          `[MOCKUP_PROCESS] Successfully processed ${mockupType} mockup: ${r2Url}`
+          `[MOCKUP_PROCESS] Successfully processed ${mockupType} mockup: ${r2Url}`,
         );
       }
     }
@@ -161,7 +148,7 @@ async function processMockupImages(
 // Helper function to upload image to temporary host for mockup generation
 async function uploadImageForMockups(
   imageBuffer: Buffer,
-  filename: string
+  filename: string,
 ): Promise<string> {
   // For now, we'll use the image URL directly since the design is already uploaded
   // In a real implementation, you might want to upload to a temporary host
@@ -174,154 +161,21 @@ export async function POST(req: Request) {
   console.log("[DESIGNS_SAVE_WITH_MOCKUPS] Request received");
   console.log("[DESIGNS_SAVE_WITH_MOCKUPS] Request URL:", req.url);
   console.log("[DESIGNS_SAVE_WITH_MOCKUPS] Request method:", req.method);
-  console.log(
-    "[DESIGNS_SAVE_WITH_MOCKUPS] Request headers:",
-    Object.fromEntries(req.headers.entries())
-  );
-  console.log(
-    "[DESIGNS_SAVE_WITH_MOCKUPS] JWT_SECRET exists:",
-    !!process.env.JWT_SECRET
-  );
 
   try {
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
-    console.log(
-      "[DESIGNS_SAVE_WITH_MOCKUPS] Auth header:",
-      authHeader ? "Present" : "Missing"
-    );
+    // 1. Get session using getServerSession
+    console.log("[DESIGNS_SAVE_WITH_MOCKUPS] Attempting to get session...");
+    const session = await getServerSession(authOptions);
 
-    if (authHeader) {
-      console.log(`  - Auth header length: ${authHeader.length}`);
+    if (!session?.user?.id) {
       console.log(
-        `  - Auth header starts with Bearer: ${authHeader.startsWith(
-          "Bearer "
-        )}`
+        "[DESIGNS_SAVE_WITH_MOCKUPS] ❌ Authentication failed: No valid session",
       );
-      if (authHeader.startsWith("Bearer ")) {
-        const token = authHeader.split(" ")[1];
-        console.log(`  - Token length: ${token.length}`);
-        console.log(`  - Token preview: ${token.substring(0, 20)}...`);
-      }
+      return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log(
-        "[DESIGNS_SAVE_WITH_MOCKUPS] ❌ Authorization header missing or invalid"
-      );
-      return new NextResponse("Authorization header missing or invalid", {
-        status: 401,
-      });
-    }
-
-    // 2. Extract token
-    const token = authHeader.split(" ")[1];
-    console.log(
-      `[DESIGNS_SAVE_WITH_MOCKUPS] Extracted token: ${token.substring(
-        0,
-        20
-      )}...`
-    );
-
-    // 3. Verify token - try NextAuth first, then fallback to custom JWT
-    let decodedPayload: NextAuthToken | null = null;
-    try {
-      const nextAuthSecret = process.env.NEXTAUTH_SECRET;
-      const jwtSecret = process.env.JWT_SECRET;
-
-      console.log(
-        "[DESIGNS_SAVE_WITH_MOCKUPS] NEXTAUTH_SECRET exists:",
-        !!nextAuthSecret
-      );
-      console.log(
-        "[DESIGNS_SAVE_WITH_MOCKUPS] JWT_SECRET exists:",
-        !!jwtSecret
-      );
-
-      // First try NextAuth token verification
-      if (nextAuthSecret) {
-        console.log(
-          "[DESIGNS_SAVE_WITH_MOCKUPS] ✅ NEXTAUTH_SECRET found, attempting NextAuth token verification..."
-        );
-
-        const nextAuthToken = await getToken({
-          req: req as any,
-          secret: nextAuthSecret,
-          secureCookie: process.env.NODE_ENV === "production",
-        });
-
-        if (nextAuthToken) {
-          decodedPayload = nextAuthToken as NextAuthToken;
-          console.log(
-            "[DESIGNS_SAVE_WITH_MOCKUPS] ✅ NextAuth token verification successful"
-          );
-          console.log(`  - User ID: ${decodedPayload.id}`);
-          console.log(`  - Email: ${decodedPayload.email}`);
-          console.log(`  - Role: ${decodedPayload.role}`);
-        } else {
-          console.log(
-            "[DESIGNS_SAVE_WITH_MOCKUPS] NextAuth token verification failed, trying custom JWT..."
-          );
-        }
-      }
-
-      // If NextAuth failed, try custom JWT verification
-      if (!decodedPayload && jwtSecret) {
-        console.log(
-          "[DESIGNS_SAVE_WITH_MOCKUPS] ✅ JWT_SECRET found, attempting custom JWT verification..."
-        );
-
-        try {
-          const customToken = jwt.verify(token, jwtSecret) as any;
-
-          // Transform custom token to match NextAuthToken interface
-          decodedPayload = {
-            id: customToken.id || customToken.sub,
-            email: customToken.email,
-            role: customToken.role || "USER",
-            name: customToken.name || null,
-            image: customToken.image || null,
-          };
-
-          console.log(
-            "[DESIGNS_SAVE_WITH_MOCKUPS] ✅ Custom JWT verification successful"
-          );
-          console.log(`  - User ID: ${decodedPayload.id}`);
-          console.log(`  - Email: ${decodedPayload.email}`);
-          console.log(`  - Role: ${decodedPayload.role}`);
-        } catch (jwtError) {
-          console.log(
-            "[DESIGNS_SAVE_WITH_MOCKUPS] ❌ Custom JWT verification failed:",
-            jwtError instanceof Error ? jwtError.message : "Unknown error"
-          );
-        }
-      }
-
-      if (!decodedPayload) {
-        console.log(
-          "[DESIGNS_SAVE_WITH_MOCKUPS] ❌ All token verification methods failed"
-        );
-        return new NextResponse("Invalid or expired token", { status: 401 });
-      }
-    } catch (error) {
-      console.error(
-        "[DESIGNS_SAVE_WITH_MOCKUPS] ❌ Token Verification Error:",
-        error
-      );
-      if (error instanceof Error) {
-        console.error("  - Error type:", error.constructor.name);
-        console.error("  - Error message:", error.message);
-      } else {
-        console.error("  - Unknown error type:", typeof error);
-      }
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    // 4. Use userId from token
-    const userId = decodedPayload.id;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
+    const userId = session.user.id;
+    console.log(`[DESIGNS_SAVE_WITH_MOCKUPS] Authenticated user: ${userId}`);
 
     // --- Design Limit Check ---
     const [user, generalSettings] = await Promise.all([
@@ -344,25 +198,25 @@ export async function POST(req: Request) {
 
     if (currentDesignCount >= limit) {
       console.log(
-        `User ${userId} reached design limit (${currentDesignCount}/${limit}).`
+        `User ${userId} reached design limit (${currentDesignCount}/${limit}).`,
       );
       return new NextResponse(
         `You have reached the maximum limit of ${limit} saved designs.`,
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     console.log(
-      "[DESIGNS_SAVE_WITH_MOCKUPS] Attempting to parse request body..."
+      "[DESIGNS_SAVE_WITH_MOCKUPS] Attempting to parse request body...",
     );
     const body = await req.json();
     console.log(
       "[DESIGNS_SAVE_WITH_MOCKUPS] Request body keys:",
-      Object.keys(body)
+      Object.keys(body),
     );
     console.log(
       "[DESIGNS_SAVE_WITH_MOCKUPS] Request body:",
-      JSON.stringify(body, null, 2)
+      JSON.stringify(body, null, 2),
     );
 
     const {
@@ -394,7 +248,7 @@ export async function POST(req: Request) {
       console.log("[DESIGNS_SAVE_WITH_MOCKUPS] ❌ Missing required IDs");
       return new NextResponse(
         "Product ID, Color ID, and Size ID are required",
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -449,7 +303,7 @@ export async function POST(req: Request) {
 
       // Add connection keep-alive and detailed logging
       console.log(
-        "[MOCKUP_GENERATION] Making request to mockup service with unlimited timeout..."
+        "[MOCKUP_GENERATION] Making request to mockup service with unlimited timeout...",
       );
       console.log("[MOCKUP_GENERATION] Request details:");
       console.log(`  - URL: http://127.0.0.1:5001/create-mockups-from-url`);
@@ -464,10 +318,10 @@ export async function POST(req: Request) {
         console.log("[MOCKUP_GENERATION] Memory usage before request:");
         console.log(`  - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
         console.log(
-          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
+          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
         );
         console.log(
-          `  - Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
+          `  - Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
         );
       }
 
@@ -479,7 +333,7 @@ export async function POST(req: Request) {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(
-            `[MOCKUP_GENERATION] Attempt ${attempt}/${maxRetries} to generate mockups...`
+            `[MOCKUP_GENERATION] Attempt ${attempt}/${maxRetries} to generate mockups...`,
           );
 
           mockupResponse = await axios.post(
@@ -502,7 +356,7 @@ export async function POST(req: Request) {
               // Add max content length limit
               maxContentLength: 50 * 1024 * 1024, // 50MB
               maxBodyLength: 50 * 1024 * 1024, // 50MB
-            }
+            },
           );
 
           // If we get here, the request succeeded
@@ -518,7 +372,7 @@ export async function POST(req: Request) {
 
           console.error(
             `[MOCKUP_GENERATION] ❌ Attempt ${attempt} failed:`,
-            error.message
+            error.message,
           );
           console.error(`[MOCKUP_GENERATION] Error code: ${error.code}`);
 
@@ -529,7 +383,7 @@ export async function POST(req: Request) {
           } else if (!isRetryableError) {
             // Non-retryable error, don't retry
             console.error(
-              `[MOCKUP_GENERATION] Non-retryable error, aborting retries`
+              `[MOCKUP_GENERATION] Non-retryable error, aborting retries`,
             );
             break;
           }
@@ -546,7 +400,7 @@ export async function POST(req: Request) {
       console.log(
         `[MOCKUP_GENERATION] Mockup service request completed in ${
           Date.now() - mockupGenStart
-        }ms`
+        }ms`,
       );
 
       // Monitor memory usage after request
@@ -555,10 +409,10 @@ export async function POST(req: Request) {
         console.log("[MOCKUP_GENERATION] Memory usage after request:");
         console.log(`  - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
         console.log(
-          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
+          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
         );
         console.log(
-          `  - Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
+          `  - Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
         );
       }
 
@@ -568,7 +422,7 @@ export async function POST(req: Request) {
       if (mockupResults.success) {
         // Process mockups and upload to R2
         console.log(
-          "[MOCKUP_GENERATION] Mockups generated successfully, processing for R2 upload..."
+          "[MOCKUP_GENERATION] Mockups generated successfully, processing for R2 upload...",
         );
 
         // Generate a temporary design ID for filename generation
@@ -578,7 +432,7 @@ export async function POST(req: Request) {
         processedMockups = await processMockupImages(
           mockupResults,
           userId,
-          tempDesignId
+          tempDesignId,
         );
 
         // Set the primary mockup URL (default view)
@@ -586,18 +440,18 @@ export async function POST(req: Request) {
           mockupImageUrl = processedMockups.default;
           console.log(
             "[MOCKUP_GENERATION] Primary mockup uploaded to R2:",
-            mockupImageUrl
+            mockupImageUrl,
           );
         }
 
         console.log(
           "[MOCKUP_GENERATION] All mockups processed and uploaded to R2:",
-          processedMockups
+          processedMockups,
         );
       } else {
         console.error(
           "[MOCKUP_GENERATION] Mockup generation failed:",
-          mockupResults
+          mockupResults,
         );
       }
     } catch (error: unknown) {
@@ -616,11 +470,11 @@ export async function POST(req: Request) {
         // Check for specific error types
         if (error.code === "ECONNRESET") {
           console.error(
-            "    - CONNECTION RESET: The server closed the connection unexpectedly"
+            "    - CONNECTION RESET: The server closed the connection unexpectedly",
           );
           console.error("    - This usually happens when:");
           console.error(
-            "      1. The request took too long and server timed out"
+            "      1. The request took too long and server timed out",
           );
           console.error("      2. The server ran out of memory");
           console.error("      3. The server process was killed");
@@ -629,7 +483,7 @@ export async function POST(req: Request) {
           console.error("    - TIMEOUT: The request timed out");
         } else if (error.code === "ECONNREFUSED") {
           console.error(
-            "    - CONNECTION REFUSED: The mockup service is not running"
+            "    - CONNECTION REFUSED: The mockup service is not running",
           );
         }
       } else if (error instanceof Error) {
@@ -642,7 +496,7 @@ export async function POST(req: Request) {
         console.error("[MOCKUP_GENERATION] Memory usage at error:");
         console.error(`  - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
         console.error(
-          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
+          `  - Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
         );
       }
 
@@ -706,7 +560,7 @@ export async function POST(req: Request) {
 
     console.log(
       "[DESIGN_SAVE] Design saved successfully with ID:",
-      savedDesign.id
+      savedDesign.id,
     );
     console.log("[DESIGN_SAVE] Mockup URLs stored:", {
       primary: finalMockupImageUrl,
