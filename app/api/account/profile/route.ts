@@ -7,15 +7,15 @@ import prismadb from "@/lib/prismadb";
 function addCorsHeaders(response: NextResponse) {
   response.headers.set(
     "Access-Control-Allow-Origin",
-    process.env.FRONTEND_STORE_URL || "*"
+    process.env.FRONTEND_STORE_URL || "*",
   ); // Allow specific origin or all
   response.headers.set(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS",
   );
   response.headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
+    "Content-Type, Authorization",
   );
   response.headers.set("Access-Control-Allow-Credentials", "true");
   return response;
@@ -27,6 +27,48 @@ export async function OPTIONS() {
   return addCorsHeaders(response);
 }
 
+// GET /api/account/profile - Fetch current user's profile
+export async function GET(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return addCorsHeaders(
+        NextResponse.json({ error: "Unauthenticated" }, { status: 401 }),
+      );
+    }
+
+    const user = await prismadb.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        bio: true,
+        portfolioUrl: true,
+        profileCardBackground: true,
+        isCreator: true,
+        hasCompletedProfileSetup: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return addCorsHeaders(
+        NextResponse.json({ error: "User not found" }, { status: 404 }),
+      );
+    }
+
+    const response = NextResponse.json(user);
+    return addCorsHeaders(response);
+  } catch (error) {
+    console.error("[ACCOUNT_PROFILE_GET]", error);
+    return addCorsHeaders(
+      NextResponse.json({ error: "Internal Server Error" }, { status: 500 }),
+    );
+  }
+}
+
 export async function PATCH(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -35,7 +77,7 @@ export async function PATCH(req: Request) {
     // Adjust 'session.user.id' if your session structure is different
     if (!session?.user?.id) {
       return addCorsHeaders(
-        new NextResponse("Unauthenticated", { status: 401 })
+        new NextResponse("Unauthenticated", { status: 401 }),
       );
     }
 
@@ -48,18 +90,18 @@ export async function PATCH(req: Request) {
       (typeof name !== "string" || name.trim().length === 0)
     ) {
       return addCorsHeaders(
-        new NextResponse("Name must be a non-empty string", { status: 400 })
+        new NextResponse("Name must be a non-empty string", { status: 400 }),
       );
     }
     if (bio !== undefined && typeof bio !== "string") {
       return addCorsHeaders(
-        new NextResponse("Bio must be a string", { status: 400 })
+        new NextResponse("Bio must be a string", { status: 400 }),
       );
     }
     if (portfolioUrl !== undefined && typeof portfolioUrl !== "string") {
       // Basic check, could add URL validation later
       return addCorsHeaders(
-        new NextResponse("Portfolio URL must be a string", { status: 400 })
+        new NextResponse("Portfolio URL must be a string", { status: 400 }),
       );
     }
     // Removed background validation (Phase 2 Rev)
@@ -80,7 +122,7 @@ export async function PATCH(req: Request) {
     // Check if there's anything to update
     if (Object.keys(updateData).length === 0) {
       return addCorsHeaders(
-        new NextResponse("No fields provided for update", { status: 400 })
+        new NextResponse("No fields provided for update", { status: 400 }),
       );
     }
 
@@ -106,7 +148,7 @@ export async function PATCH(req: Request) {
     console.error("[ACCOUNT_PROFILE_PATCH]", error);
     // Consider more specific error handling (e.g., Prisma errors)
     return addCorsHeaders(
-      new NextResponse("Internal Server Error", { status: 500 })
+      new NextResponse("Internal Server Error", { status: 500 }),
     );
   }
 }

@@ -81,6 +81,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           ...initialData,
           price: parseFloat(String(initialData?.price)),
           images: initialData.images || [],
+          sizeId: initialData.sizeId || "",
+          colorId: initialData.colorId || "",
+          categoryId: initialData.categoryId || "",
         }
       : {
           name: "",

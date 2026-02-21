@@ -2,6 +2,15 @@
 
 const nextConfig = {
   // CORS headers will be handled in middleware.ts
+  async rewrites() {
+    return [
+      // Rewrite /api/be/* to /api/* for frontend API calls
+      {
+        source: "/api/be/:path*",
+        destination: "/api/:path*",
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

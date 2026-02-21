@@ -1,14 +1,11 @@
 import { AuthOptions } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import GoogleProvider from "next-auth/providers/google";
-import * as jose from "jose";
 
 import prismadb from "@/lib/prismadb";
 import { UserRole } from "@prisma/client";
 
 // Admin email restriction - configurable via ADMIN_EMAIL environment variable
-// If ADMIN_EMAIL is set, only that email can access the backend
-// If not set, email restriction is disabled (all authenticated users can access)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase();
 
 // Get and validate the secret - throw error if missing
@@ -21,7 +18,6 @@ function getSecret(): string {
 }
 
 const secret = getSecret();
-const secretKey = new TextEncoder().encode(secret);
 
 // Define authOptions here
 export const authOptions: AuthOptions = {
@@ -41,31 +37,10 @@ export const authOptions: AuthOptions = {
   ],
   debug: process.env.NODE_ENV === "development",
   session: {
-    strategy: "jwt",
+    strategy: "database",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: secret,
-  jwt: {
-    // Use the jose library for encoding/decoding JWTs
-    encode: async ({ token }) => {
-      return await new jose.SignJWT(token as jose.JWTPayload)
-        .setProtectedHeader({ alg: "HS256" })
-        .setIssuedAt()
-        .setExpirationTime("30d")
-        .sign(secretKey);
-    },
-    decode: async ({ token }) => {
-      try {
-        const { payload } = await jose.jwtVerify(
-          token as string,
-          secretKey
-        );
-        return payload;
-      } catch {
-        return null;
-      }
-    },
-  },
   cookies: {
     sessionToken: {
       name:
@@ -85,23 +60,6 @@ export const authOptions: AuthOptions = {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, user, account, trigger, session }) {
-      // Initial sign in
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
-        token.picture = user.image;
-      }
-
-      // Handle session updates
-      if (trigger === "update" && session) {
-        token.name = session.name;
-        token.picture = session.picture;
-      }
-
-      return token;
-    },
     async signIn({ user, account, profile }) {
       // Admin email restriction
       if (ADMIN_EMAIL && user.email?.toLowerCase() !== ADMIN_EMAIL) {
@@ -126,33 +84,29 @@ export const authOptions: AuthOptions = {
 
       return true;
     },
-    async session({ session, token }) {
-      console.log("[NextAuth Session Callback] Loading session from token");
+    async session({ session, user }) {
+      console.log("[NextAuth Session Callback] Loading session from database");
 
-      if (token && session.user) {
-        session.user.id = token.id as string;
-        session.user.email = token.email as string;
-        session.user.name = token.name as string | null;
-        session.user.image = token.picture as string | null;
+      if (user && session.user) {
+        session.user.id = user.id;
+        session.user.email = user.email;
+        session.user.name = user.name;
+        session.user.image = user.image;
 
-        // Fetch additional user data from database for role and other fields
-        try {
-          const dbUser = await prismadb.user.findUnique({
-            where: { id: token.id as string },
-          });
+        // Fetch additional user data from database
+        const dbUser = await prismadb.user.findUnique({
+          where: { id: user.id },
+        });
 
-          if (dbUser) {
-            session.user.role = dbUser.role as UserRole;
-            session.user.profileCardBackground = dbUser.profileCardBackground;
-            session.user.bio = dbUser.bio;
-            session.user.portfolioUrl = dbUser.portfolioUrl;
-            session.user.hasCompletedProfile = !!dbUser.name;
-            console.log(
-              `[NextAuth] Session loaded for user: ${dbUser.email}, role: ${dbUser.role}`,
-            );
-          }
-        } catch (error) {
-          console.error("[NextAuth] Error fetching user from database:", error);
+        if (dbUser) {
+          session.user.role = dbUser.role as UserRole;
+          session.user.profileCardBackground = dbUser.profileCardBackground;
+          session.user.bio = dbUser.bio;
+          session.user.portfolioUrl = dbUser.portfolioUrl;
+          session.user.hasCompletedProfile = !!dbUser.name;
+          console.log(
+            `[NextAuth] Session loaded for user: ${dbUser.email}, role: ${dbUser.role}`,
+          );
         }
       }
 
@@ -166,7 +120,7 @@ export const authOptions: AuthOptions = {
       }
     },
     async signOut({ session }) {
-      console.log("[NextAuth] User signed out");
+      console.log("[NextAuth] User signed out, session deleted from DB");
     },
   },
 };

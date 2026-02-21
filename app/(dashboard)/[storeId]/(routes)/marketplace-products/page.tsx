@@ -43,15 +43,15 @@ const MarketplaceProductsPage = async ({
       id: item.id,
       name: item.name,
       price: formatter.format(parseFloat(item.price.toString())), // Use shared formatter
-      category: item.category.name,
-      size: item.size.name,
-      color: item.color.value, // Use color value for display (e.g., background swatch)
+      category: item.category?.name ?? "N/A",
+      size: item.size?.name ?? "N/A",
+      color: item.color?.value ?? "#000000", // Use color value for display (e.g., background swatch)
       createdAt: format(item.createdAt, "MMMM do, yyyy"),
       // Flatten relevant savedDesign details
       designId: item.savedDesignId ?? "N/A",
       creatorName: item.savedDesign?.user?.name ?? "N/A",
       isShared: item.savedDesign?.isShared ?? false,
-    })
+    }),
   );
 
   return (
