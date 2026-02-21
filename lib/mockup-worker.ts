@@ -39,6 +39,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
     }
 
     // Color and size are optional - they can be null for mockup generation
+    // Validate that colorId and sizeId actually exist in the database
     const color = job.colorId
       ? await prismadb.color.findUnique({
           where: { id: job.colorId },
@@ -50,6 +51,24 @@ export async function processMockupJob(jobId: string): Promise<void> {
           where: { id: job.sizeId },
         })
       : null;
+
+    // If colorId was provided but color doesn't exist, log warning and set to null
+    if (job.colorId && !color) {
+      console.warn(
+        `[MOCKUP_WORKER] Color with ID ${job.colorId} not found, setting to null`,
+      );
+    }
+
+    // If sizeId was provided but size doesn't exist, log warning and set to null
+    if (job.sizeId && !size) {
+      console.warn(
+        `[MOCKUP_WORKER] Size with ID ${job.sizeId} not found, setting to null`,
+      );
+    }
+
+    // Use validated color and size IDs (null if not found)
+    const validatedColorId = color ? job.colorId : null;
+    const validatedSizeId = size ? job.sizeId : null;
 
     // Don't save the design immediately - wait until mockups are generated
     // This ensures the mockup image is available when the design is first displayed
@@ -208,61 +227,55 @@ export async function processMockupJob(jobId: string): Promise<void> {
     );
 
     // Step 4: Save the design with mockup results (100% progress)
-    // Color and size are optional - use values from job or undefined
+    // Color and size are optional - only include if validated
     let savedDesign = null;
-    const designColorId = job.colorId;
-    const designSizeId = job.sizeId;
+
+    // Build the base data object - explicitly set optional fields to undefined
+    const designData: any = {
+      userId: job.userId,
+      productId: job.productId,
+      designImageUrl: mockupImageUrl || job.imageUrl,
+      mockupImageUrl: mockupImageUrl || null,
+      description:
+        job.description ||
+        (mockupImageUrl
+          ? "Custom design"
+          : "Custom design (mockup generation failed)"),
+      customText: job.customText,
+      uploadedLogoUrl: job.uploadedLogoUrl,
+      uploadedPatternUrl: job.uploadedPatternUrl,
+      shirtColorHex: job.shirtColorHex,
+      isLogoMode: job.isLogoMode || false,
+      logoScale: job.logoScale,
+      logoOffsetX: job.logoOffsetX,
+      logoOffsetY: job.logoOffsetY,
+      logoTargetPart: job.logoTargetPart,
+    };
+
+    // Only add colorId and sizeId if they are valid (not null/undefined/empty)
+    // This ensures we don't pass invalid foreign keys to Prisma
+    if (validatedColorId && validatedColorId.trim() !== "") {
+      designData.colorId = validatedColorId;
+    } else {
+      // Explicitly delete to ensure Prisma doesn't receive undefined
+      delete designData.colorId;
+    }
+    if (validatedSizeId && validatedSizeId.trim() !== "") {
+      designData.sizeId = validatedSizeId;
+    } else {
+      // Explicitly delete to ensure Prisma doesn't receive undefined
+      delete designData.sizeId;
+    }
+
+    savedDesign = await prismadb.savedDesign.create({
+      data: designData,
+    });
 
     if (mockupImageUrl) {
-      // Only save the design if mockup generation was successful
-      savedDesign = await prismadb.savedDesign.create({
-        data: {
-          userId: job.userId,
-          productId: job.productId,
-          colorId: designColorId,
-          sizeId: designSizeId,
-          designImageUrl: mockupImageUrl, // Use mockup image for display in UI
-          mockupImageUrl: mockupImageUrl, // Save mockup image immediately
-          description: job.description || "Custom design",
-          customText: job.customText || undefined,
-          uploadedLogoUrl: job.uploadedLogoUrl || undefined,
-          uploadedPatternUrl: job.uploadedPatternUrl || undefined,
-          shirtColorHex: job.shirtColorHex || undefined,
-          isLogoMode: job.isLogoMode || false,
-          logoScale: job.logoScale || undefined,
-          logoOffsetX: job.logoOffsetX || undefined,
-          logoOffsetY: job.logoOffsetY || undefined,
-          logoTargetPart: job.logoTargetPart || undefined,
-        },
-      });
-
       console.log(
         `[MOCKUP_WORKER] ✅ Saved design ${savedDesign.id} with mockup for job ${jobId}`,
       );
     } else {
-      // If mockup generation failed, still save the design but without mockup
-      savedDesign = await prismadb.savedDesign.create({
-        data: {
-          userId: job.userId,
-          productId: job.productId,
-          colorId: designColorId,
-          sizeId: designSizeId,
-          designImageUrl: job.imageUrl, // Use original image as fallback when no mockup
-          mockupImageUrl: null, // No mockup available
-          description:
-            job.description || "Custom design (mockup generation failed)",
-          customText: job.customText || undefined,
-          uploadedLogoUrl: job.uploadedLogoUrl || undefined,
-          uploadedPatternUrl: job.uploadedPatternUrl || undefined,
-          shirtColorHex: job.shirtColorHex || undefined,
-          isLogoMode: job.isLogoMode || false,
-          logoScale: job.logoScale || undefined,
-          logoOffsetX: job.logoOffsetX || undefined,
-          logoOffsetY: job.logoOffsetY || undefined,
-          logoTargetPart: job.logoTargetPart || undefined,
-        },
-      });
-
       console.log(
         `[MOCKUP_WORKER] ⚠️ Saved design ${savedDesign.id} without mockup for job ${jobId}`,
       );

@@ -279,9 +279,9 @@ model SavedDesign {
   derivedProductId  String?   @unique
   derivedProduct    Product?  @relation("ProductForDesign")
   ratings           Rating[]
-  color             Color     @relation(fields: [colorId], references: [id])
+  color             Color?    @relation(fields: [colorId], references: [id])
   product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  size              Size      @relation(fields: [sizeId], references: [id])
+  size              Size?     @relation(fields: [sizeId], references: [id])
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
