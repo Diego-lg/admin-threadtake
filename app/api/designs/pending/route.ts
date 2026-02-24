@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prismadb from "@/lib/prismadb";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { DesignStatus } from "@prisma/client";
 
 // POST /api/designs/pending - Create a pending design
 export async function POST(req: Request) {
@@ -47,15 +48,45 @@ export async function POST(req: Request) {
 
     const finalDesignImageUrl = transformUrl(designImageUrl);
 
+    // Validate sizeId and colorId if provided - only use them if they exist in the database
+    let validatedColorId: string | null = null;
+    let validatedSizeId: string | null = null;
+
+    if (colorId) {
+      const colorExists = await prismadb.color.findUnique({
+        where: { id: colorId },
+      });
+      if (colorExists) {
+        validatedColorId = colorId;
+      } else {
+        console.warn(
+          `[DESIGNS_PENDING_POST] Color ID ${colorId} not found, setting to null`,
+        );
+      }
+    }
+
+    if (sizeId) {
+      const sizeExists = await prismadb.size.findUnique({
+        where: { id: sizeId },
+      });
+      if (sizeExists) {
+        validatedSizeId = sizeId;
+      } else {
+        console.warn(
+          `[DESIGNS_PENDING_POST] Size ID ${sizeId} not found, setting to null`,
+        );
+      }
+    }
+
     // Create the pending design
     const pendingDesign = await prismadb.savedDesign.create({
       data: {
         id: designId,
         userId: userId,
-        status: "PENDING",
+        status: DesignStatus.PENDING,
         productId,
-        colorId: colorId || null,
-        sizeId: sizeId || null,
+        colorId: validatedColorId,
+        sizeId: validatedSizeId,
         customText: customText || null,
         designImageUrl: finalDesignImageUrl,
         shirtColorHex: shirtColorHex || null,
@@ -70,8 +101,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json(pendingDesign);
   } catch (error) {
-    console.error("[DESIGNS_PENDING_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    console.error("[DESIGNS_PENDING_POST] Full error:", error);
+    if (error instanceof Error) {
+      console.error("[DESIGNS_PENDING_POST] Error message:", error.message);
+      console.error("[DESIGNS_PENDING_POST] Error stack:", error.stack);
+    }
+    return new NextResponse(
+      "Internal Error: " +
+        (error instanceof Error ? error.message : "Unknown error"),
+      { status: 500 },
+    );
   }
 }
 
@@ -96,7 +135,7 @@ export async function GET(req: Request) {
       where: {
         userId: userId,
         status: {
-          in: ["PENDING", "PROCESSING"],
+          in: [DesignStatus.PENDING, DesignStatus.PROCESSING],
         },
         createdAt: {
           gte: twoHoursAgo,
@@ -119,7 +158,15 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ pendingDesigns });
   } catch (error) {
-    console.error("[DESIGNS_PENDING_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    console.error("[DESIGNS_PENDING_GET] Full error:", error);
+    if (error instanceof Error) {
+      console.error("[DESIGNS_PENDING_GET] Error message:", error.message);
+      console.error("[DESIGNS_PENDING_GET] Error stack:", error.stack);
+    }
+    return new NextResponse(
+      "Internal Error: " +
+        (error instanceof Error ? error.message : "Unknown error"),
+      { status: 500 },
+    );
   }
 }

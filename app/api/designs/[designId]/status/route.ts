@@ -26,9 +26,12 @@ export async function PATCH(
     const body = await req.json();
     const { status, progress, error } = body;
 
+    // Normalize status to uppercase if provided
+    const normalizedStatus = status ? status.toUpperCase() : undefined;
+
     // Validate status if provided
     const validStatuses = ["PENDING", "PROCESSING", "COMPLETE", "FAILED"];
-    if (status && !validStatuses.includes(status)) {
+    if (normalizedStatus && !validStatuses.includes(normalizedStatus)) {
       return new NextResponse(
         `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
         {
@@ -37,49 +40,51 @@ export async function PATCH(
       );
     }
 
-    // Build update data
-    const updates: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Build update data object for Prisma
+    const updateData: any = {};
 
-    if (status) {
-      updates.push(`status = $${paramIndex++}`);
-      values.push(status);
+    if (normalizedStatus) {
+      updateData.status = normalizedStatus;
     }
-
     if (typeof progress === "number") {
-      updates.push(`progress = $${paramIndex++}`);
-      values.push(progress);
+      updateData.progress = progress;
     }
-
     if (error !== undefined) {
-      updates.push(`error = $${paramIndex++}`);
-      values.push(error);
+      updateData.error = error;
     }
 
-    if (updates.length === 0) {
+    if (Object.keys(updateData).length === 0) {
       return new NextResponse("No fields to update", { status: 400 });
     }
 
-    // Add the designId and userId to the values array
-    values.push(designId, userId);
-
-    // Use raw query to update the design status
-    const updatedDesign = await prismadb.$queryRaw`
-      UPDATE "SavedDesign"
-      SET ${updates.join(", ")}
-      WHERE id = ${designId} AND "userId" = ${userId}
-      RETURNING id, "customText", "designImageUrl", status, progress, error, "createdAt", "updatedAt"
-    `;
+    // Use Prisma's built-in update method for safer query
+    const updatedDesign = await prismadb.savedDesign.update({
+      where: {
+        id: designId,
+        userId: userId,
+      },
+      data: updateData,
+      select: {
+        id: true,
+        customText: true,
+        designImageUrl: true,
+        status: true,
+        progress: true,
+        error: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     return NextResponse.json(updatedDesign);
-  } catch (error) {
+  } catch (error: any) {
     console.error("[DESIGN_STATUS_PATCH]", error);
 
-    // Check if design not found
+    // Check if design not found (Prisma error code P2025)
     if (
-      error instanceof Error &&
-      error.message.includes("Record to update not found")
+      error?.code === "P2025" ||
+      (error?.meta?.cause &&
+        error.meta.cause.includes("Record to update not found"))
     ) {
       return new NextResponse("Design not found", { status: 404 });
     }

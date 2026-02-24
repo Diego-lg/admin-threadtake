@@ -24,15 +24,26 @@ export async function processMockupJob(jobId: string): Promise<void> {
     // Update the pending design status to PROCESSING if it exists
     if (job.designId) {
       try {
-        await prismadb.savedDesign.update({
+        // First check if the design exists
+        const existingDesign = await prismadb.savedDesign.findUnique({
           where: { id: job.designId },
-          data: {
-            status: "PROCESSING" as const,
-          },
         });
-        console.log(
-          `[MOCKUP_WORKER] Updated pending design ${job.designId} to PROCESSING status`,
-        );
+
+        if (existingDesign) {
+          await prismadb.savedDesign.update({
+            where: { id: job.designId },
+            data: {
+              status: "PROCESSING" as const,
+            },
+          });
+          console.log(
+            `[MOCKUP_WORKER] Updated pending design ${job.designId} to PROCESSING status`,
+          );
+        } else {
+          console.log(
+            `[MOCKUP_WORKER] Pending design ${job.designId} not found, will create during processing`,
+          );
+        }
       } catch (updateError) {
         console.error(
           `[MOCKUP_WORKER] Failed to update pending design status:`,
@@ -364,16 +375,27 @@ export async function processMockupJob(jobId: string): Promise<void> {
     // Update the pending design status to FAILED if it exists
     if (job.designId) {
       try {
-        await prismadb.savedDesign.update({
+        // First check if the design exists
+        const existingDesign = await prismadb.savedDesign.findUnique({
           where: { id: job.designId },
-          data: {
-            status: "FAILED" as const,
-            error: errorMessage,
-          },
         });
-        console.log(
-          `[MOCKUP_WORKER] ✅ Updated pending design ${job.designId} to FAILED status`,
-        );
+
+        if (existingDesign) {
+          await prismadb.savedDesign.update({
+            where: { id: job.designId },
+            data: {
+              status: "FAILED" as const,
+              error: errorMessage,
+            },
+          });
+          console.log(
+            `[MOCKUP_WORKER] ✅ Updated pending design ${job.designId} to FAILED status`,
+          );
+        } else {
+          console.log(
+            `[MOCKUP_WORKER] Pending design ${job.designId} not found, skipping status update`,
+          );
+        }
       } catch (updateError) {
         console.error(
           `[MOCKUP_WORKER] Failed to update pending design status:`,
