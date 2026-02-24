@@ -1,61 +1,33 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import prismadb from "@/lib/prismadb";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3"; // Import S3 client
-import { Prisma, UserRole } from "@prisma/client"; // Import Prisma and UserRole
-
-// Define the expected shape of the JWT payload (matching the other route)
-interface JwtPayload {
-  userId: string; // Changed from id to userId to match other route
-  email: string;
-  role: UserRole;
-  iat: number;
-  exp: number;
-}
+import { Prisma } from "@prisma/client"; // Import Prisma
 
 // PATCH /api/designs/[designId] - Update a specific saved design
 export async function PATCH(
   req: Request,
-  { params }: { params: { designId: string } } // Use params from context
+  { params }: { params: { designId: string } }, // Use params from context
 ) {
   try {
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
-        status: 401,
-      });
+    // 1. Get session using getServerSession
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthenticated", { status: 401 });
     }
 
-    // 2. Extract token
-    const token = authHeader.split(" ")[1];
+    // 2. Use userId from session
+    const userId = session.user.id;
 
-    // 3. Verify token
-    let decodedPayload: JwtPayload;
-    try {
-      const jwtSecret = process.env.JWT_SECRET; // Use the same secret
-      if (!jwtSecret) {
-        throw new Error("JWT_SECRET environment variable is not set!");
-      }
-      decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
-    } catch (error) {
-      console.error("JWT Verification Error:", error);
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    // 4. Use userId from token
-    const userId = decodedPayload.userId;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
-
-    // 5. Get designId from params
+    // 3. Get designId from params
     const { designId } = params;
     if (!designId) {
       return new NextResponse("Design ID is required", { status: 400 });
     }
 
-    // 6. Get request body
+    // 4. Get request body
     const body = await req.json();
     const {
       description,
@@ -67,7 +39,7 @@ export async function PATCH(
       usageRights, // Add usageRights
     } = body;
 
-    // 7. Prepare update data, only including fields that were actually provided
+    // 5. Prepare update data, only including fields that were actually provided
     const updateData: {
       description?: string | null;
       tags?: string[];
@@ -102,7 +74,7 @@ export async function PATCH(
       });
     }
 
-    // 8. Update the design in the database, ensuring ownership
+    // 6. Update the design in the database, ensuring ownership
     const updatedDesign = await prismadb.savedDesign.update({
       where: {
         id: designId,
@@ -134,9 +106,25 @@ export async function PATCH(
 // DELETE /api/designs/[designId] - Delete a specific saved design
 export async function DELETE(
   req: Request,
-  { params }: { params: { designId: string } } // Use params from context
+  { params }: { params: { designId: string } }, // Use params from context
 ) {
   try {
+    // 1. Get session using getServerSession
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return new NextResponse("Unauthenticated", { status: 401 });
+    }
+
+    // 2. Use userId from session
+    const userId = session.user.id;
+
+    // 3. Get designId from params
+    const { designId } = params;
+    if (!designId) {
+      return new NextResponse("Design ID is required", { status: 400 });
+    }
+
     // Debug: Log R2 environment variables at the start of the request
     console.log("--- R2 Env Var Check ---");
     console.log("R2_ENDPOINT:", process.env.R2_ENDPOINT);
@@ -144,48 +132,13 @@ export async function DELETE(
     // Avoid logging the actual secret key for security
     console.log(
       "R2_SECRET_ACCESS_KEY:",
-      process.env.R2_SECRET_ACCESS_KEY ? "Loaded" : "Missing/Empty"
+      process.env.R2_SECRET_ACCESS_KEY ? "Loaded" : "Missing/Empty",
     );
     console.log("R2_BUCKET_NAME:", process.env.R2_BUCKET_NAME);
     console.log("R2_PUBLIC_BUCKET_URL:", process.env.R2_PUBLIC_BUCKET_URL);
     console.log("------------------------");
-    // 1. Get Authorization header
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new NextResponse("Authorization header missing or invalid", {
-        status: 401,
-      });
-    }
 
-    // 2. Extract token
-    const token = authHeader.split(" ")[1];
-
-    // 3. Verify token
-    let decodedPayload: JwtPayload;
-    try {
-      const jwtSecret = process.env.JWT_SECRET; // Use the same secret
-      if (!jwtSecret) {
-        throw new Error("JWT_SECRET environment variable is not set!");
-      }
-      decodedPayload = jwt.verify(token, jwtSecret) as JwtPayload;
-    } catch (error) {
-      console.error("JWT Verification Error:", error);
-      return new NextResponse("Invalid or expired token", { status: 401 });
-    }
-
-    // 4. Use userId from token
-    const userId = decodedPayload.userId;
-    if (!userId) {
-      return new NextResponse("User ID not found in token", { status: 401 });
-    }
-
-    // 5. Get designId from params
-    const { designId } = params;
-    if (!designId) {
-      return new NextResponse("Design ID is required", { status: 400 });
-    }
-
-    // Verify the design exists and belongs to the user before deleting
+    // 4. Verify the design exists and belongs to the user before deleting
     const designToDelete = await prismadb.savedDesign.findUnique({
       where: {
         id: designId,
@@ -213,7 +166,7 @@ export async function DELETE(
       // Check for R2 environment variables
       const accountId = process.env.R2_ENDPOINT?.split(".")[0]?.replace(
         "https://",
-        ""
+        "",
       ); // Extract account ID for endpoint
       const accessKeyId = process.env.R2_ACCESS_KEY_ID;
       const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
@@ -228,7 +181,7 @@ export async function DELETE(
         !publicBucketUrl
       ) {
         console.error(
-          "R2 environment variables missing. Skipping R2 deletion."
+          "R2 environment variables missing. Skipping R2 deletion.",
         );
         // Optionally return an error or just log and continue with DB deletion
         // return new NextResponse("Server configuration error for file deletion", { status: 500 });
@@ -262,14 +215,14 @@ export async function DELETE(
               console.log(`Successfully deleted R2 object: ${objectKey}`);
             } else {
               console.warn(
-                `Could not extract object key from URL: ${imageUrl} using base: ${baseUrl}`
+                `Could not extract object key from URL: ${imageUrl} using base: ${baseUrl}`,
               );
             }
           } catch (r2Error) {
             // Log R2 deletion errors but don't necessarily block DB deletion
             console.error(
               `Failed to delete R2 object for URL ${imageUrl}:`,
-              r2Error
+              r2Error,
             );
           }
         });
@@ -298,7 +251,7 @@ export async function DELETE(
 // GET /api/designs/[designId] - Get public details for a single shared design
 export async function GET(
   req: Request, // Keep req for potential future use (e.g., getting headers)
-  { params }: { params: { designId: string } }
+  { params }: { params: { designId: string } },
 ) {
   try {
     const { designId } = params;
@@ -367,7 +320,7 @@ export async function GET(
       // If product details couldn't be fetched (e.g., inconsistent state), return error
       if (!productDetails) {
         console.error(
-          `Could not fetch product details for product ID ${targetProductId} linked to design ${designId}`
+          `Could not fetch product details for product ID ${targetProductId} linked to design ${designId}`,
         );
         return new NextResponse("Error fetching product details", {
           status: 500,
@@ -385,7 +338,7 @@ export async function GET(
     } catch (viewCountError) {
       console.error(
         `Failed to increment view count for design ${designId}:`,
-        viewCountError
+        viewCountError,
       );
       // Log the error but continue serving the request
     }
