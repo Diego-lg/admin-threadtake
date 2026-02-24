@@ -71,12 +71,14 @@ export async function POST(req: Request) {
     // 3. Ensure user folder structure exists for mockups
     await UserFolderService.ensureUserFolderExists(userId);
 
-    // 4. Create a design ID for organizing mockups
-    const designId = uuidv4();
+    // 4. Use the designId from request body if provided, otherwise generate a new one
+    // This ensures we can update the pending design instead of creating a new one
+    const finalDesignId = body.designId || uuidv4();
+    console.log("[DESIGNS_SAVE_ASYNC] Using designId:", finalDesignId);
 
     // 5. Create a mockup generation job with design ID
     const job = await MockupJobManager.createJob(userId, designImageUrl, {
-      designId, // Add design ID for folder organization
+      designId: finalDesignId, // Use the design ID (either from request or new)
       productId,
       colorId,
       sizeId,
@@ -104,13 +106,13 @@ export async function POST(req: Request) {
       "[DESIGNS_SAVE_ASYNC] Created job:",
       job.id,
       "for design:",
-      designId,
+      finalDesignId,
     );
 
     return NextResponse.json({
       success: true,
       jobId: job.id,
-      designId,
+      designId: finalDesignId,
       message:
         "Design saved successfully. Mockups are being generated in the background.",
       estimatedTime: job.estimatedTimeRemaining,

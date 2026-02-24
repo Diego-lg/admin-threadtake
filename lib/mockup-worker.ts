@@ -21,6 +21,26 @@ export async function processMockupJob(jobId: string): Promise<void> {
     // Mark job as processing
     await MockupJobManager.startProcessing(jobId);
 
+    // Update the pending design status to PROCESSING if it exists
+    if (job.designId) {
+      try {
+        await prismadb.savedDesign.update({
+          where: { id: job.designId },
+          data: {
+            status: "PROCESSING" as const,
+          },
+        });
+        console.log(
+          `[MOCKUP_WORKER] Updated pending design ${job.designId} to PROCESSING status`,
+        );
+      } catch (updateError) {
+        console.error(
+          `[MOCKUP_WORKER] Failed to update pending design status:`,
+          updateError,
+        );
+      }
+    }
+
     // Step 1: Prepare design data (20% progress)
     await MockupJobManager.updateProgress(jobId, 20, "Preparing design data");
 
@@ -236,6 +256,7 @@ export async function processMockupJob(jobId: string): Promise<void> {
       productId: job.productId,
       designImageUrl: mockupImageUrl || job.imageUrl,
       mockupImageUrl: mockupImageUrl || null,
+      status: "COMPLETE" as const,
       description:
         job.description ||
         (mockupImageUrl
@@ -267,9 +288,40 @@ export async function processMockupJob(jobId: string): Promise<void> {
       delete designData.sizeId;
     }
 
-    savedDesign = await prismadb.savedDesign.create({
-      data: designData,
-    });
+    // Check if there's an existing pending design with this designId
+    // If so, update it instead of creating a new one
+    if (job.designId) {
+      const existingDesign = await prismadb.savedDesign.findUnique({
+        where: { id: job.designId },
+      });
+
+      if (existingDesign) {
+        // Update the existing pending design
+        savedDesign = await prismadb.savedDesign.update({
+          where: { id: job.designId },
+          data: designData,
+        });
+        console.log(
+          `[MOCKUP_WORKER] ✅ Updated existing pending design ${savedDesign.id} with mockup for job ${jobId}`,
+        );
+      } else {
+        // No existing design, create a new one
+        savedDesign = await prismadb.savedDesign.create({
+          data: designData,
+        });
+        console.log(
+          `[MOCKUP_WORKER] ✅ Created new design ${savedDesign.id} with mockup for job ${jobId}`,
+        );
+      }
+    } else {
+      // No designId provided, create a new design
+      savedDesign = await prismadb.savedDesign.create({
+        data: designData,
+      });
+      console.log(
+        `[MOCKUP_WORKER] ✅ Created new design ${savedDesign.id} with mockup for job ${jobId}`,
+      );
+    }
 
     if (mockupImageUrl) {
       console.log(
@@ -307,6 +359,27 @@ export async function processMockupJob(jobId: string): Promise<void> {
       }
     } else if (error instanceof Error) {
       errorMessage = error.message;
+    }
+
+    // Update the pending design status to FAILED if it exists
+    if (job.designId) {
+      try {
+        await prismadb.savedDesign.update({
+          where: { id: job.designId },
+          data: {
+            status: "FAILED" as const,
+            error: errorMessage,
+          },
+        });
+        console.log(
+          `[MOCKUP_WORKER] ✅ Updated pending design ${job.designId} to FAILED status`,
+        );
+      } catch (updateError) {
+        console.error(
+          `[MOCKUP_WORKER] Failed to update pending design status:`,
+          updateError,
+        );
+      }
     }
 
     await MockupJobManager.failJob(jobId, errorMessage);
