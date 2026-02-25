@@ -1,70 +1,92 @@
+/* globals.css - Fonts are loaded via next/font/google in layout.tsx */
+
+/* Define CSS variables - fallbacks in case Next.js fonts don't load */
+:root {
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* Override with Next.js font variables when they are applied to body */
+body {
+  --font-display: var(
+    --font-inter,
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif
+  );
+  --font-mono: var(
+    --font-jetbrains-mono,
+    "JetBrains Mono",
+    "Fira Code",
+    monospace
+  );
+  font-family: var(--font-display);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-html,
-body,
-:root {
-  height: 100%;
-}
-
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
+/* Removed height: 100% from html, body, :root */
 
 @layer base {
   :root {
-    --background: 0 0% 100%; /* White */
-    --foreground: 0 0% 9%; /* Near Black */
-    --card: 0 0% 100%; /* White */
-    --card-foreground: 0 0% 9%; /* Near Black */
-    --popover: 0 0% 100%; /* White */
-    --popover-foreground: 0 0% 9%; /* Near Black */
-    --primary: 0 0% 9%; /* Near Black */
-    --primary-foreground: 0 0% 98%; /* Near White */
-    --secondary: 0 0% 96.1%; /* Light Gray */
-    --secondary-foreground: 0 0% 9%; /* Near Black */
-    --muted: 0 0% 96.1%; /* Light Gray */
-    --muted-foreground: 0 0% 45.1%; /* Mid Gray */
-    --accent: 0 0% 96.1%; /* Light Gray */
-    --accent-foreground: 0 0% 9%; /* Near Black */
-    --destructive: 0 84.2% 60.2%; /* Red */
-    --destructive-foreground: 0 0% 98%; /* Near White */
-    --border: 0 0% 89.8%; /* Light Gray */
-    --input: 0 0% 89.8%; /* Light Gray */
-    --ring: 0 0% 63.9%; /* Mid Gray */
-    --chart-1: 0 0% 70%; /* Grayscale Chart Colors */
-    --chart-2: 0 0% 60%;
-    --chart-3: 0 0% 50%;
-    --chart-4: 0 0% 40%;
-    --chart-5: 0 0% 30%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
   .dark {
-    --background: 0 0% 9%; /* Near Black */
-    --foreground: 0 0% 98%; /* Near White */
-    --card: 0 0% 9%; /* Near Black */
-    --card-foreground: 0 0% 98%; /* Near White */
-    --popover: 0 0% 9%; /* Near Black */
-    --popover-foreground: 0 0% 98%; /* Near White */
-    --primary: 0 0% 98%; /* Near White */
-    --primary-foreground: 0 0% 9%; /* Near Black */
-    --secondary: 0 0% 14.9%; /* Dark Gray */
-    --secondary-foreground: 0 0% 98%; /* Near White */
-    --muted: 0 0% 14.9%; /* Dark Gray */
-    --muted-foreground: 0 0% 63.9%; /* Light Gray */
-    --accent: 0 0% 14.9%; /* Dark Gray */
-    --accent-foreground: 0 0% 98%; /* Near White */
-    --destructive: 0 62.8% 30.6%; /* Dark Red */
-    --destructive-foreground: 0 0% 98%; /* Near White */
-    --border: 0 0% 14.9%; /* Dark Gray */
-    --input: 0 0% 14.9%; /* Dark Gray */
-    --ring: 0 0% 83.1%; /* Light Gray */
-    --chart-1: 0 0% 30%; /* Grayscale Chart Colors */
-    --chart-2: 0 0% 40%;
-    --chart-3: 0 0% 50%;
-    --chart-4: 0 0% 60%;
-    --chart-5: 0 0% 70%;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 0%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 0%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 86% 53%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 100%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+  .theme {
+    --animate-grid: grid 15s linear infinite;
+    --animate-shiny-text: shiny-text 8s infinite;
   }
 }
 
@@ -77,11 +99,125 @@ body {
   }
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+@theme inline {
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+
+  @keyframes grid {
+    0% {
+      transform: translateY(-50%);
+    }
+    100% {
+      transform: translateY(0);
+    }
   }
-  body {
-    @apply bg-background text-foreground;
+  @keyframes shiny-text {
+    0%,
+    90%,
+    100% {
+      background-position: calc(-100% - var(--shiny-width)) 0;
+    }
+    30%,
+    60% {
+      background-position: calc(100% + var(--shiny-width)) 0;
+    }
   }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+  @keyframes float-delayed {
+    0%,
+    100% {
+      transform: translateY(-10px);
+    }
+    50% {
+      transform: translateY(-30px);
+    }
+  }
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-15px) rotate(2deg);
+    }
+  }
+  @keyframes float-fast {
+    0%,
+    100% {
+      transform: translateY(0px) rotate(45deg);
+    }
+    50% {
+      transform: translateY(-25px) rotate(50deg);
+    }
+  }
+  @keyframes float-fast-delayed {
+    0%,
+    100% {
+      transform: translateY(-5px);
+    }
+    50% {
+      transform: translateY(-35px);
+    }
+  }
+}
+
+@layer utilities {
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  .animate-float-delayed {
+    animation: float-delayed 8s ease-in-out infinite;
+  }
+  .animate-float-slow {
+    animation: float-slow 10s ease-in-out infinite;
+  }
+  .animate-float-fast {
+    animation: float-fast 4s ease-in-out infinite;
+  }
+  .animate-float-fast-delayed {
+    animation: float-fast-delayed 7s ease-in-out infinite;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Navbar Links */
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  text-decoration: none;
+  position: relative;
+  padding: 0.5rem 0;
+}
+
+/* Optional hover effect */
+.nav-link::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  color: #999999;
+  clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+  transition: clip-path 0.3s ease;
+}
+
+.nav-link:hover::after {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
 }
