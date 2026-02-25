@@ -7,8 +7,9 @@ import { R2Security } from "./lib/r2-security";
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://www.threadtake.com",
-        "https://threadtake.com",
+        "https://www.awaqai.com",
+        "https://awaqai.com",
+        "http://awaqai.com",
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
       ].filter(Boolean) as string[])
     : ["http://localhost:3001", "http://localhost:3000"];
@@ -117,9 +118,10 @@ export async function middleware(req: NextRequest) {
       // Simply check if the auth cookie exists - don't try to decode it
       // The API routes will handle the actual session validation
       const cookieHeader = req.headers.get("cookie");
-      const hasAuthCookie = cookieHeader && 
-        (cookieHeader.includes("next-auth.session-token") || 
-         cookieHeader.includes("__Secure-next-auth.session-token"));
+      const hasAuthCookie =
+        cookieHeader &&
+        (cookieHeader.includes("next-auth.session-token") ||
+          cookieHeader.includes("__Secure-next-auth.session-token"));
 
       if (!hasAuthCookie) {
         // No auth cookie, redirect to login

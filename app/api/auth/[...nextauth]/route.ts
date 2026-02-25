@@ -6,8 +6,9 @@ import { NextRequest, NextResponse } from "next/server"; // Import NextRequest a
 const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? ([
-        "https://www.threadtake.com",
-        "https://threadtake.com",
+        "https://www.awaqai.com",
+        "https://awaqai.com",
+        "http://awaqai.com",
         // Add other production origins if necessary
       ].filter(Boolean) as string[])
     : ["http://localhost:3001", "http://localhost:3000"]; // Allow storefront dev (:3001) and admin dev (:3000)
@@ -25,18 +26,18 @@ export async function OPTIONS(req: NextRequest) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set(
       "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
+      "GET, POST, PUT, DELETE, OPTIONS",
     ); // Explicitly list allowed methods
     response.headers.set(
       "Access-Control-Allow-Headers",
-      "Authorization, Content-Type"
+      "Authorization, Content-Type",
     ); // Explicitly list allowed headers
     response.headers.set("Access-Control-Allow-Credentials", "true");
   } else {
     // Optionally log blocked origins for debugging
     if (origin)
       console.warn(
-        `Blocked OPTIONS request to /api/auth/ from origin: ${origin}`
+        `Blocked OPTIONS request to /api/auth/ from origin: ${origin}`,
       );
   }
 

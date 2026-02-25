@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const navigationConfig = {
-  logoText: "Thread Take",
+  logoText: "Awaqia",
   marketplaceLink: "/marketplace",
   marketplaceLabel: "Marketplace",
   menuItems: [

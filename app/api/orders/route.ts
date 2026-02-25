@@ -14,7 +14,7 @@ export async function GET(req: Request) {
       return new NextResponse("Unauthenticated", {
         status: 401,
         headers: {
-          "Access-Control-Allow-Origin": "https://www.threadtake.com", // Or use '*' for testing, but be specific in production
+          "Access-Control-Allow-Origin": "https://www.awaqai.com", // Or use '*' for testing, but be specific in production
           "Access-Control-Allow-Credentials": "true", // If you need credentials
         },
       });
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
     const response = NextResponse.json(ordersWithTotals);
     response.headers.set(
       "Access-Control-Allow-Origin",
-      "https://www.threadtake.com",
+      "https://www.awaqai.com",
     ); // Or '*' for testing
     response.headers.set("Access-Control-Allow-Credentials", "true");
     return response;
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
     return new NextResponse("Internal Error", {
       status: 500,
       headers: {
-        "Access-Control-Allow-Origin": "https://www.threadtake.com", // Or '*' for testing
+        "Access-Control-Allow-Origin": "https://www.awaqai.com", // Or '*' for testing
         "Access-Control-Allow-Credentials": "true",
       },
     });
