@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
+import { getDefaultShippingRates } from "@/lib/printful";
 import prismadb from "@/lib/prismadb";
 
 export async function OPTIONS() {
@@ -9,7 +10,7 @@ export async function OPTIONS() {
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ storeId: string }> }
+  { params }: { params: Promise<{ storeId: string }> },
 ) {
   try {
     const { storeId } = await params;
@@ -59,10 +60,55 @@ export async function POST(
       },
     });
 
+    // Get default shipping rates from Printful (for checkout display)
+    const defaultRates = getDefaultShippingRates();
+
+    const shipping_options = defaultRates.map((rate) => ({
+      shipping_rate_data: {
+        type: "fixed_amount" as const,
+        fixed_amount: {
+          amount: Math.round(rate.price * 100),
+          currency: "usd",
+        },
+        display_name: rate.name,
+        delivery_estimate: rate.estimated_days
+          ? {
+              minimum: {
+                unit: "business_day" as const,
+                value: parseInt(rate.estimated_days.split("-")[0]) || 7,
+              },
+              maximum: {
+                unit: "business_day" as const,
+                value:
+                  parseInt(rate.estimated_days.split("-")[1]?.split(" ")[0]) ||
+                  14,
+              },
+            }
+          : undefined,
+      },
+    }));
+
     const session = await stripe.checkout.sessions.create({
       line_items,
       mode: "payment",
       billing_address_collection: "required",
+      shipping_address_collection: {
+        allowed_countries: [
+          "US",
+          "CA",
+          "GB",
+          "MX",
+          "PE",
+          "ES",
+          "FR",
+          "DE",
+          "IT",
+          "PT",
+          "AU",
+          "JP",
+        ],
+      },
+      shipping_options,
       phone_number_collection: {
         enabled: true,
       },

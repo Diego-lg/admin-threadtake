@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
+      process.env.STRIPE_WEBHOOK_SECRET!,
     );
   } catch (error) {
     if (error instanceof Error) {
@@ -29,6 +29,10 @@ export async function POST(req: Request) {
   const session = event.data.object as Stripe.Checkout.Session;
   const address = session?.customer_details?.address;
 
+  // Get shipping address from Stripe (cast to any to handle Stripe type differences)
+  const shippingAddress = (session as any)?.shipping?.address;
+
+  // Build billing address string
   const addressComponents = [
     address?.line1,
     address?.line2,
@@ -37,14 +41,28 @@ export async function POST(req: Request) {
     address?.postal_code,
     address?.country,
   ];
-
   const addressString = addressComponents.filter((c) => c !== null).join(", ");
+
+  // Build shipping address string
+  const shippingAddressComponents = [
+    shippingAddress?.line1,
+    shippingAddress?.line2,
+    shippingAddress?.city,
+    shippingAddress?.state,
+    shippingAddress?.postal_code,
+    shippingAddress?.country,
+  ];
+  const shippingAddressString = shippingAddressComponents
+    .filter((c) => c !== null)
+    .join(", ");
+
   if (event.type === "checkout.session.completed") {
     const order = await prismadb.order.update({
       where: { id: session?.metadata?.orderId },
       data: {
         isPaid: true,
         address: addressString,
+        shippingAddress: shippingAddressString,
         phone: session?.customer_details?.phone || "",
       },
       include: {
@@ -54,7 +72,7 @@ export async function POST(req: Request) {
     const productIds = order.orderItems.map((orderItem) => orderItem.productId);
     console.log(
       "Product IDs to update and sync with database - stripe payment successful:",
-      productIds
+      productIds,
     ); // Added log for product IDs to archive
 
     await prismadb.product.updateMany({
