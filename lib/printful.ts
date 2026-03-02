@@ -91,13 +91,6 @@ export function getDefaultShippingRates(): PrintfulShippingRate[] {
       currency: "USD",
       estimated_days: "7-14 business days",
     },
-    {
-      id: "express",
-      name: "Express Shipping",
-      price: 12.99,
-      currency: "USD",
-      estimated_days: "3-5 business days",
-    },
   ];
 }
 
