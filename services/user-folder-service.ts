@@ -5,6 +5,7 @@ import {
   AssetType,
   ExportType,
   ProfilePictureType,
+  sanitizeUserNameForPath,
 } from "../lib/r2-user-storage";
 import prismadb from "../lib/prismadb";
 import { folderErrorHandler } from "../lib/r2-folder-error-handler";
@@ -68,7 +69,7 @@ export class UserFolderService {
 
     try {
       console.log(
-        `[USER_FOLDER_SERVICE] Initializing folder structure for user ${userId}`
+        `[USER_FOLDER_SERVICE] Initializing folder structure for user ${userId}`,
       );
 
       // Validate user exists in database
@@ -86,7 +87,7 @@ export class UserFolderService {
         const folderExists = await R2UserStorage.userFolderExists(userId);
         if (folderExists) {
           console.log(
-            `[USER_FOLDER_SERVICE] User folder already exists for ${userId}`
+            `[USER_FOLDER_SERVICE] User folder already exists for ${userId}`,
           );
           return true;
         }
@@ -97,16 +98,16 @@ export class UserFolderService {
             await folderErrorHandler.handlePermissionDenied(
               userId,
               UserFolderPaths.getUserBasePath(userId),
-              context
+              context,
             );
           throw new Error(
-            `Permission denied: ${recoveryResult.error?.message}`
+            `Permission denied: ${recoveryResult.error?.message}`,
           );
         }
 
         // For other errors, try to proceed with folder creation
         console.warn(
-          `[USER_FOLDER_SERVICE] Error checking folder existence: ${error.message}`
+          `[USER_FOLDER_SERVICE] Error checking folder existence: ${error.message}`,
         );
       }
 
@@ -116,7 +117,7 @@ export class UserFolderService {
 
         if (created) {
           console.log(
-            `[USER_FOLDER_SERVICE] Successfully created folder structure for user ${userId}`
+            `[USER_FOLDER_SERVICE] Successfully created folder structure for user ${userId}`,
           );
           // Optionally store metadata in database
           await this.updateUserFolderMetadata(userId);
@@ -127,18 +128,18 @@ export class UserFolderService {
         const recoveryResult = await this.handleFolderCreationError(
           userId,
           error,
-          context
+          context,
         );
 
         if (recoveryResult.success) {
           console.log(
-            `[USER_FOLDER_SERVICE] Successfully recovered and created folder structure for user ${userId}`
+            `[USER_FOLDER_SERVICE] Successfully recovered and created folder structure for user ${userId}`,
           );
           await this.updateUserFolderMetadata(userId);
           return true;
         } else {
           throw new Error(
-            `Failed to create user folder: ${recoveryResult.error?.message}`
+            `Failed to create user folder: ${recoveryResult.error?.message}`,
           );
         }
       }
@@ -147,9 +148,156 @@ export class UserFolderService {
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error initializing user folder for ${userId}:`,
-        error
+        error,
       );
       throw new Error(`Failed to initialize user folder: ${error.message}`);
+    }
+  }
+
+  /**
+   * Initialize user folder structure using user's name (human-readable folders)
+   * This creates folders like: users/john-doe/ instead of users/userId/
+   * @param userId - The user ID
+   * @param userName - The user's display name
+   * @returns True if initialization was successful
+   */
+  static async initializeUserFolderByName(
+    userId: string,
+    userName: string,
+  ): Promise<boolean> {
+    const startTime = Date.now();
+    const sanitizedName = sanitizeUserNameForPath(userName, userId);
+    const context: FolderOperationContext = {
+      userId,
+      operation: "initialize_user_folder_by_name",
+      startTime: new Date(),
+    };
+
+    try {
+      console.log(
+        `[USER_FOLDER_SERVICE] Initializing name-based folder structure for user ${userId} (name: ${sanitizedName})`,
+      );
+
+      // Validate user exists in database
+      const user = await prismadb.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true },
+      });
+
+      if (!user) {
+        throw new Error(`User ${userId} not found in database`);
+      }
+
+      // Create folder structure using R2UserStorage with name-based paths
+      const created =
+        await R2UserStorage.createUserFolderStructureByName(sanitizedName);
+
+      if (created) {
+        console.log(
+          `[USER_FOLDER_SERVICE] Successfully created name-based folder structure for user ${userId}: users/${sanitizedName}/`,
+        );
+
+        // Update user record with folder info
+        await prismadb.user.update({
+          where: { id: userId },
+          data: {
+            r2FolderCreated: true,
+          },
+        });
+
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error initializing name-based folder for ${userId}:`,
+        error,
+      );
+      throw new Error(
+        `Failed to initialize name-based folder: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Initialize user folder using their name from database
+   * This is the main method to use for creating user folders with human-readable names
+   * @param userId - The user ID
+   * @returns True if initialization was successful
+   */
+  static async initializeUserFolderWithName(userId: string): Promise<boolean> {
+    try {
+      // Get user from database to get their name
+      const user = await prismadb.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true },
+      });
+
+      if (!user) {
+        throw new Error(`User ${userId} not found in database`);
+      }
+
+      // If user doesn't have a name, fall back to ID-based folder
+      if (!user.name) {
+        console.log(
+          `[USER_FOLDER_SERVICE] User ${userId} has no name, using ID-based folder`,
+        );
+        return await this.initializeUserFolder(userId);
+      }
+
+      // Use name-based folder
+      return await this.initializeUserFolderByName(userId, user.name);
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error initializing folder with name for ${userId}:`,
+        error,
+      );
+      throw new Error(
+        `Failed to initialize folder with name: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Get user folder name for display purposes
+   * @param userId - The user ID
+   * @returns Object with folder path info
+   */
+  static async getUserFolderInfo(
+    userId: string,
+  ): Promise<{ folderPath: string; folderExists: boolean }> {
+    try {
+      const user = await prismadb.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true },
+      });
+
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      // Use name-based path if user has a name
+      if (user.name) {
+        const folderName = sanitizeUserNameForPath(user.name, userId);
+        const folderPath = `users/${folderName}`;
+        const folderExists =
+          await R2UserStorage.userFolderExistsByName(folderName);
+
+        return { folderPath, folderExists };
+      }
+
+      // Fall back to ID-based path
+      const folderPath = UserFolderPaths.getUserBasePath(userId);
+      const folderExists = await R2UserStorage.userFolderExists(userId);
+
+      return { folderPath, folderExists };
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error getting folder info for ${userId}:`,
+        error,
+      );
+      throw new Error(`Failed to get folder info: ${error.message}`);
     }
   }
 
@@ -159,11 +307,11 @@ export class UserFolderService {
   private static async handleFolderCreationError(
     userId: string,
     error: Error,
-    context: FolderOperationContext
+    context: FolderOperationContext,
   ): Promise<ErrorRecoveryResult> {
     console.error(
       `[USER_FOLDER_SERVICE] Folder creation error for ${userId}:`,
-      error
+      error,
     );
 
     // Classify error type and handle accordingly
@@ -171,7 +319,7 @@ export class UserFolderService {
       return await folderErrorHandler.handlePermissionDenied(
         userId,
         UserFolderPaths.getUserBasePath(userId),
-        context
+        context,
       );
     }
 
@@ -195,6 +343,7 @@ export class UserFolderService {
 
   /**
    * Ensure user folder exists (create if needed) with comprehensive error handling
+   * Prefers name-based folders when user has a name set
    * @param userId - The user ID
    * @returns True if folder exists or was created
    */
@@ -207,30 +356,41 @@ export class UserFolderService {
     };
 
     try {
-      // First try the basic approach
+      // Check if user has a name - if so, use name-based folder
+      const user = await prismadb.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+
+      if (user?.name) {
+        // Use name-based folder approach
+        return await this.ensureNameBasedFolder(userId, user.name);
+      }
+
+      // Fall back to ID-based folder
       return await R2UserStorage.ensureUserFolderExists(userId);
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error ensuring user folder exists for ${userId}:`,
-        error
+        error,
       );
 
       // Try to recover from the error
       const recoveryResult = await this.handleFolderCreationError(
         userId,
         error,
-        context
+        context,
       );
 
       if (recoveryResult.success) {
         console.log(
-          `[USER_FOLDER_SERVICE] Successfully recovered and ensured folder exists for user ${userId}`
+          `[USER_FOLDER_SERVICE] Successfully recovered and ensured folder exists for user ${userId}`,
         );
         return true;
       }
 
       throw new Error(
-        `Failed to ensure user folder exists: ${recoveryResult.error?.message}`
+        `Failed to ensure user folder exists: ${recoveryResult.error?.message}`,
       );
     }
   }
@@ -241,7 +401,7 @@ export class UserFolderService {
    * @returns User folder metadata
    */
   static async getUserFolderMetadata(
-    userId: string
+    userId: string,
   ): Promise<UserFolderMetadata> {
     const context: FolderOperationContext = {
       userId,
@@ -256,16 +416,16 @@ export class UserFolderService {
         // Try to create the folder automatically
         const recoveryResult = await folderErrorHandler.handleMissingUserFolder(
           userId,
-          context
+          context,
         );
 
         if (recoveryResult.success) {
           console.log(
-            `[USER_FOLDER_SERVICE] Auto-created missing folder for user ${userId}`
+            `[USER_FOLDER_SERVICE] Auto-created missing folder for user ${userId}`,
           );
         } else {
           console.warn(
-            `[USER_FOLDER_SERVICE] Could not auto-create folder for user ${userId}`
+            `[USER_FOLDER_SERVICE] Could not auto-create folder for user ${userId}`,
           );
           return {
             userId,
@@ -329,7 +489,7 @@ export class UserFolderService {
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error getting user folder metadata for ${userId}:`,
-        error
+        error,
       );
 
       // Return default metadata on error
@@ -353,7 +513,7 @@ export class UserFolderService {
    */
   private static async getFolderStats(
     userId: string,
-    folderType: "mockups" | "assets" | "exports" | "profile-pictures"
+    folderType: "mockups" | "assets" | "exports" | "profile-pictures",
   ): Promise<{ count: number; size: number }> {
     try {
       const files = await R2UserStorage.listUserFiles(userId, folderType, 1000);
@@ -364,7 +524,7 @@ export class UserFolderService {
     } catch (error) {
       console.error(
         `[USER_FOLDER_SERVICE] Error getting stats for ${folderType} folder:`,
-        error
+        error,
       );
       return { count: 0, size: 0 };
     }
@@ -376,7 +536,7 @@ export class UserFolderService {
    * @returns Updated metadata
    */
   static async updateUserFolderMetadata(
-    userId: string
+    userId: string,
   ): Promise<UserFolderMetadata> {
     try {
       const metadata = await this.getUserFolderMetadata(userId);
@@ -389,17 +549,17 @@ export class UserFolderService {
           totalFiles: metadata.totalFiles,
           totalSize: metadata.totalSize,
           folderExists: metadata.folderExists,
-        }
+        },
       );
 
       return metadata;
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error updating user folder metadata for ${userId}:`,
-        error
+        error,
       );
       throw new Error(
-        `Failed to update user folder metadata: ${error.message}`
+        `Failed to update user folder metadata: ${error.message}`,
       );
     }
   }
@@ -412,7 +572,7 @@ export class UserFolderService {
    */
   static async validateUserFileAccess(
     userId: string,
-    fileKey: string
+    fileKey: string,
   ): Promise<boolean> {
     try {
       // Check if the file key starts with the user's base path
@@ -420,7 +580,7 @@ export class UserFolderService {
 
       if (!fileKey.startsWith(userBasePath)) {
         console.warn(
-          `[USER_FOLDER_SERVICE] Access denied: User ${userId} trying to access file outside their folder: ${fileKey}`
+          `[USER_FOLDER_SERVICE] Access denied: User ${userId} trying to access file outside their folder: ${fileKey}`,
         );
         return false;
       }
@@ -430,7 +590,7 @@ export class UserFolderService {
 
       if (!fileExists) {
         console.warn(
-          `[USER_FOLDER_SERVICE] Access denied: File does not exist: ${fileKey}`
+          `[USER_FOLDER_SERVICE] Access denied: File does not exist: ${fileKey}`,
         );
         return false;
       }
@@ -439,7 +599,7 @@ export class UserFolderService {
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error validating user file access for ${userId}:`,
-        error
+        error,
       );
       return false;
     }
@@ -457,7 +617,7 @@ export class UserFolderService {
     userId: string,
     designId: string,
     mockupType: MockupType,
-    extension: string
+    extension: string,
   ): Promise<{ key: string; publicUrl: string }> {
     const context: FolderOperationContext = {
       userId,
@@ -465,7 +625,7 @@ export class UserFolderService {
       folderPath: UserFolderPaths.getMockupTypePath(
         userId,
         designId,
-        mockupType
+        mockupType,
       ),
       startTime: new Date(),
       metadata: { designId, mockupType, extension },
@@ -480,7 +640,7 @@ export class UserFolderService {
         userId,
         designId,
         mockupType,
-        extension
+        extension,
       );
     } catch (error: any) {
       console.error(`[USER_FOLDER_SERVICE] Error getting mockup path:`, error);
@@ -492,7 +652,7 @@ export class UserFolderService {
       ) {
         const recoveryResult = await folderErrorHandler.handleMissingUserFolder(
           userId,
-          context
+          context,
         );
         if (recoveryResult.success) {
           // Retry the operation after recovery
@@ -500,7 +660,7 @@ export class UserFolderService {
             userId,
             designId,
             mockupType,
-            extension
+            extension,
           );
         }
       }
@@ -519,7 +679,7 @@ export class UserFolderService {
   static async getProfilePicturePath(
     userId: string,
     type: ProfilePictureType,
-    extension: string
+    extension: string,
   ): Promise<{ key: string; publicUrl: string }> {
     const context: FolderOperationContext = {
       userId,
@@ -541,7 +701,7 @@ export class UserFolderService {
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error getting profile picture path:`,
-        error
+        error,
       );
 
       // Try to recover from folder-related errors
@@ -551,14 +711,14 @@ export class UserFolderService {
       ) {
         const recoveryResult = await folderErrorHandler.handleMissingUserFolder(
           userId,
-          context
+          context,
         );
         if (recoveryResult.success) {
           // Retry the operation after recovery
           return R2UserStorage.generateProfilePicturePath(
             userId,
             type,
-            extension
+            extension,
           );
         }
       }
@@ -579,7 +739,7 @@ export class UserFolderService {
     userId: string,
     assetType: AssetType,
     designId?: string,
-    extension: string = ""
+    extension: string = "",
   ): Promise<{ key: string; publicUrl: string }> {
     const context: FolderOperationContext = {
       userId,
@@ -598,7 +758,7 @@ export class UserFolderService {
         userId,
         assetType,
         designId,
-        extension
+        extension,
       );
     } catch (error: any) {
       console.error(`[USER_FOLDER_SERVICE] Error getting asset path:`, error);
@@ -610,7 +770,7 @@ export class UserFolderService {
       ) {
         const recoveryResult = await folderErrorHandler.handleMissingUserFolder(
           userId,
-          context
+          context,
         );
         if (recoveryResult.success) {
           // Retry the operation after recovery
@@ -618,7 +778,7 @@ export class UserFolderService {
             userId,
             assetType,
             designId,
-            extension
+            extension,
           );
         }
       }
@@ -637,7 +797,7 @@ export class UserFolderService {
   static async getExportPath(
     userId: string,
     exportType: ExportType,
-    filename: string
+    filename: string,
   ): Promise<{ key: string; publicUrl: string }> {
     const context: FolderOperationContext = {
       userId,
@@ -663,7 +823,7 @@ export class UserFolderService {
       ) {
         const recoveryResult = await folderErrorHandler.handleMissingUserFolder(
           userId,
-          context
+          context,
         );
         if (recoveryResult.success) {
           // Retry the operation after recovery
@@ -683,14 +843,14 @@ export class UserFolderService {
    */
   static async deleteUserFile(
     userId: string,
-    fileKey: string
+    fileKey: string,
   ): Promise<boolean> {
     try {
       // Validate user has access to the file
       const hasAccess = await this.validateUserFileAccess(userId, fileKey);
       if (!hasAccess) {
         throw new Error(
-          `User ${userId} does not have access to file ${fileKey}`
+          `User ${userId} does not have access to file ${fileKey}`,
         );
       }
 
@@ -721,7 +881,7 @@ export class UserFolderService {
     userId: string,
     prefix?: string,
     page: number = 0,
-    pageSize: number = 50
+    pageSize: number = 50,
   ): Promise<{
     files: { key: string; lastModified: Date; size: number }[];
     totalCount: number;
@@ -792,9 +952,160 @@ export class UserFolderService {
     } catch (error: any) {
       console.error(
         `[USER_FOLDER_SERVICE] Error getting user folder stats:`,
-        error
+        error,
       );
       throw new Error(`Failed to get user folder stats: ${error.message}`);
+    }
+  }
+
+  // ===== NEW: Folder Migration Methods =====
+
+  /**
+   * Rename user folder when user changes their name
+   * @param userId - The user ID
+   * @param oldName - Old user name
+   * @param newName - New user name
+   * @returns Result with success status
+   */
+  static async renameUserFolderOnNameChange(
+    userId: string,
+    oldName: string,
+    newName: string,
+  ): Promise<{ success: boolean; filesCopied: number; error?: string }> {
+    try {
+      const oldSanitizedName = sanitizeUserNameForPath(oldName, userId);
+      const newSanitizedName = sanitizeUserNameForPath(newName, userId);
+
+      // If names are the same after sanitization, no need to rename
+      if (oldSanitizedName === newSanitizedName) {
+        console.log(
+          `[USER_FOLDER_SERVICE] Name unchanged after sanitization, skipping folder rename`,
+        );
+        return { success: true, filesCopied: 0 };
+      }
+
+      console.log(
+        `[USER_FOLDER_SERVICE] Renaming user folder from ${oldSanitizedName} to ${newSanitizedName} for user ${userId}`,
+      );
+
+      const result = await R2UserStorage.renameUserFolder(
+        oldSanitizedName,
+        newSanitizedName,
+      );
+
+      if (result.success) {
+        console.log(
+          `[USER_FOLDER_SERVICE] Successfully renamed folder for user ${userId}: ${result.filesCopied} files copied`,
+        );
+      } else {
+        console.error(
+          `[USER_FOLDER_SERVICE] Failed to rename folder for user ${userId}: ${result.error}`,
+        );
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error renaming user folder on name change:`,
+        error,
+      );
+      return {
+        success: false,
+        filesCopied: 0,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Migrate existing ID-based folder to name-based folder
+   * @param userId - The user ID
+   * @param userName - The user's name
+   * @returns Result with success status
+   */
+  static async migrateToNameBasedFolder(
+    userId: string,
+    userName: string,
+  ): Promise<{ success: boolean; filesCopied: number; error?: string }> {
+    try {
+      const sanitizedName = sanitizeUserNameForPath(userName, userId);
+
+      console.log(
+        `[USER_FOLDER_SERVICE] Migrating user ${userId} folder to name-based: users/${sanitizedName}/`,
+      );
+
+      const result = await R2UserStorage.migrateToNameBasedFolder(
+        userId,
+        sanitizedName,
+      );
+
+      if (result.success) {
+        console.log(
+          `[USER_FOLDER_SERVICE] Successfully migrated folder for user ${userId}: ${result.filesCopied} files copied`,
+        );
+      } else {
+        console.error(
+          `[USER_FOLDER_SERVICE] Failed to migrate folder for user ${userId}: ${result.error}`,
+        );
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error migrating to name-based folder:`,
+        error,
+      );
+      return {
+        success: false,
+        filesCopied: 0,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Ensure user has a name-based folder (create or migrate)
+   * This is the main method to call during user registration/profile completion
+   * @param userId - The user ID
+   * @param userName - The user's name
+   * @returns True if folder was created/migrated successfully
+   */
+  static async ensureNameBasedFolder(
+    userId: string,
+    userName: string,
+  ): Promise<boolean> {
+    try {
+      const sanitizedName = sanitizeUserNameForPath(userName, userId);
+
+      // Check if name-based folder already exists
+      const nameFolderExists =
+        await R2UserStorage.userFolderExistsByName(sanitizedName);
+      if (nameFolderExists) {
+        console.log(
+          `[USER_FOLDER_SERVICE] Name-based folder already exists for ${sanitizedName}`,
+        );
+        return true;
+      }
+
+      // Check if there's an existing ID-based folder to migrate
+      const idFolderExists = await R2UserStorage.userFolderExists(userId);
+      if (idFolderExists) {
+        // Migrate from ID-based to name-based
+        const result = await this.migrateToNameBasedFolder(userId, userName);
+        return result.success;
+      }
+
+      // Create new name-based folder
+      const created =
+        await R2UserStorage.createUserFolderStructureByName(sanitizedName);
+
+      return created;
+    } catch (error: any) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error ensuring name-based folder:`,
+        error,
+      );
+      return false;
     }
   }
 }

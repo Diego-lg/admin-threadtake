@@ -5,6 +5,8 @@ import {
   HeadObjectCommand,
   ListObjectVersionsCommand,
   DeleteObjectCommand,
+  PutObjectCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import { R2Config } from "./r2-config";
 import { UserFolderPaths } from "./r2-user-storage";
@@ -760,6 +762,397 @@ export class R2BucketManager {
         publicBucketUrl: "",
         accountId: "",
         isConfigured: false,
+      };
+    }
+  }
+
+  // ===== FOLDER MANAGEMENT METHODS =====
+
+  /**
+   * Folder information interface
+   */
+  static async listFolders(prefix: string = "users/"): Promise<{
+    folders: string[];
+    count: number;
+  }> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      const command = new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        Prefix: prefix,
+        Delimiter: "/",
+      });
+
+      const response = await client.send(command);
+
+      // Extract folder prefixes (common prefixes in S3/R2)
+      const folders = (response.CommonPrefixes || []).map(
+        (cp) => cp.Prefix || "",
+      );
+
+      return {
+        folders,
+        count: folders.length,
+      };
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error listing folders:", error);
+      throw new Error(`Failed to list folders: ${error.message}`);
+    }
+  }
+
+  /**
+   * List all user folders (top-level folders under users/)
+   */
+  static async listUserFolders(): Promise<{
+    folders: { name: string; path: string }[];
+    count: number;
+  }> {
+    try {
+      const { folders } = await this.listFolders("users/");
+
+      const userFolders = folders
+        .map((path) => {
+          // Extract folder name from path like "users/john-doe/"
+          const parts = path.replace("users/", "").split("/");
+          return {
+            name: parts[0],
+            path: path,
+          };
+        })
+        .filter((f) => f.name); // Filter out empty names
+
+      return {
+        folders: userFolders,
+        count: userFolders.length,
+      };
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error listing user folders:", error);
+      throw new Error(`Failed to list user folders: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if a folder exists
+   */
+  static async folderExists(folderPath: string): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      // Add trailing slash if not present
+      const normalizedPath = folderPath.endsWith("/")
+        ? folderPath
+        : `${folderPath}/`;
+
+      const command = new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        Prefix: normalizedPath,
+        MaxKeys: 1,
+      });
+
+      const response = await client.send(command);
+      return (
+        (response.Contents?.length || 0) > 0 ||
+        (response.CommonPrefixes?.length || 0) > 0
+      );
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error checking folder exists:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Create a folder (folder marker)
+   */
+  static async createFolder(folderPath: string): Promise<boolean> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      // Normalize path
+      const normalizedPath = folderPath.endsWith("/")
+        ? folderPath
+        : `${folderPath}/`;
+      const markerPath = `${normalizedPath}.folder_marker`;
+
+      const command = new PutObjectCommand({
+        Bucket: config.bucketName,
+        Key: markerPath,
+        Body: "",
+        ContentType: "application/x-directory",
+      });
+
+      await client.send(command);
+      console.log(`[R2_BUCKET_MANAGER] Created folder: ${normalizedPath}`);
+      return true;
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error creating folder:", error);
+      throw new Error(`Failed to create folder: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delete a folder and all its contents
+   */
+  static async deleteFolder(
+    folderPath: string,
+    options?: { dryRun?: boolean },
+  ): Promise<{
+    success: boolean;
+    deletedFiles: string[];
+    deletedFolders: string[];
+    error?: string;
+  }> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      // Normalize path
+      const normalizedPath = folderPath.endsWith("/")
+        ? folderPath
+        : `${folderPath}/`;
+
+      // First, list all objects in the folder
+      const listCommand = new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        Prefix: normalizedPath,
+      });
+
+      const response = await client.send(listCommand);
+      const objects = response.Contents || [];
+
+      if (objects.length === 0) {
+        return {
+          success: true,
+          deletedFiles: [],
+          deletedFolders: [],
+        };
+      }
+
+      const deletedFiles: string[] = [];
+      const deletedFolders: string[] = [];
+
+      if (!options?.dryRun) {
+        // Delete all objects in batches
+        const batchSize = 1000;
+        for (let i = 0; i < objects.length; i += batchSize) {
+          const batch = objects.slice(i, i + batchSize);
+          const deleteCommand = new DeleteObjectsCommand({
+            Bucket: config.bucketName,
+            Delete: {
+              Objects: batch.map((obj) => ({ Key: obj.Key })),
+              Quiet: true,
+            },
+          });
+
+          await client.send(deleteCommand);
+          batch.forEach((obj) => {
+            deletedFiles.push(obj.Key || "");
+          });
+        }
+
+        // Also delete the folder markers (common prefixes)
+        const commonPrefixes = response.CommonPrefixes || [];
+        for (const prefix of commonPrefixes) {
+          deletedFolders.push(prefix.Prefix || "");
+        }
+      }
+
+      console.log(
+        `[R2_BUCKET_MANAGER] Deleted folder ${normalizedPath}: ${deletedFiles.length} files, ${deletedFolders.length} subfolders`,
+      );
+
+      return {
+        success: true,
+        deletedFiles,
+        deletedFolders,
+      };
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error deleting folder:", error);
+      return {
+        success: false,
+        deletedFiles: [],
+        deletedFolders: [],
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get folder statistics (size, file count, etc.)
+   */
+  static async getFolderStats(folderPath: string): Promise<{
+    totalFiles: number;
+    totalSize: number;
+    subfolders: string[];
+    lastModified?: Date;
+  }> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      // Normalize path
+      const normalizedPath = folderPath.endsWith("/")
+        ? folderPath
+        : `${folderPath}/`;
+
+      const command = new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        Prefix: normalizedPath,
+      });
+
+      const response = await client.send(command);
+      const objects = response.Contents || [];
+      const subfolders = (response.CommonPrefixes || []).map(
+        (cp) => cp.Prefix || "",
+      );
+
+      let totalSize = 0;
+      let lastModified: Date | undefined;
+
+      for (const obj of objects) {
+        totalSize += obj.Size || 0;
+        if (
+          !lastModified ||
+          (obj.LastModified && obj.LastModified > lastModified)
+        ) {
+          lastModified = obj.LastModified;
+        }
+      }
+
+      return {
+        totalFiles: objects.length,
+        totalSize,
+        subfolders,
+        lastModified,
+      };
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error getting folder stats:", error);
+      throw new Error(`Failed to get folder stats: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get statistics for all user folders
+   */
+  static async getAllUserFoldersStats(): Promise<{
+    folders: {
+      name: string;
+      path: string;
+      totalFiles: number;
+      totalSize: number;
+      subfolders: string[];
+    }[];
+  }> {
+    try {
+      const { folders } = await this.listUserFolders();
+
+      const folderStats = await Promise.all(
+        folders.map(async (folder) => {
+          const stats = await this.getFolderStats(folder.path);
+          return {
+            name: folder.name,
+            path: folder.path,
+            totalFiles: stats.totalFiles,
+            totalSize: stats.totalSize,
+            subfolders: stats.subfolders,
+          };
+        }),
+      );
+
+      return { folders: folderStats };
+    } catch (error: any) {
+      console.error(
+        "[R2_BUCKET_MANAGER] Error getting all user folders stats:",
+        error,
+      );
+      throw new Error(`Failed to get all user folders stats: ${error.message}`);
+    }
+  }
+
+  /**
+   * Copy/move a folder to a new location
+   */
+  static async copyFolder(
+    sourcePath: string,
+    destinationPath: string,
+    options?: { dryRun?: boolean },
+  ): Promise<{
+    success: boolean;
+    copiedFiles: number;
+    error?: string;
+  }> {
+    try {
+      const client = this.getClient();
+      const config = this.config;
+
+      // Normalize paths
+      const normalizedSource = sourcePath.endsWith("/")
+        ? sourcePath
+        : `${sourcePath}/`;
+      const normalizedDest = destinationPath.endsWith("/")
+        ? destinationPath
+        : `${destinationPath}/`;
+
+      // List all objects in source folder
+      const listCommand = new ListObjectsV2Command({
+        Bucket: config.bucketName,
+        Prefix: normalizedSource,
+      });
+
+      const response = await client.send(listCommand);
+      const objects = response.Contents || [];
+
+      if (objects.length === 0) {
+        return {
+          success: true,
+          copiedFiles: 0,
+        };
+      }
+
+      if (options?.dryRun) {
+        return {
+          success: true,
+          copiedFiles: objects.length,
+        };
+      }
+
+      // Copy each object
+      const { CopyObjectCommand } = await import("@aws-sdk/client-s3");
+      let copiedFiles = 0;
+
+      for (const obj of objects) {
+        const sourceKey = obj.Key;
+        if (!sourceKey) continue;
+
+        const destKey = sourceKey.replace(normalizedSource, normalizedDest);
+
+        const copyCommand = new CopyObjectCommand({
+          Bucket: config.bucketName,
+          CopySource: `${config.bucketName}/${sourceKey}`,
+          Key: destKey,
+        });
+
+        await client.send(copyCommand);
+        copiedFiles++;
+      }
+
+      console.log(
+        `[R2_BUCKET_MANAGER] Copied folder ${normalizedSource} to ${normalizedDest}: ${copiedFiles} files`,
+      );
+
+      return {
+        success: true,
+        copiedFiles,
+      };
+    } catch (error: any) {
+      console.error("[R2_BUCKET_MANAGER] Error copying folder:", error);
+      return {
+        success: false,
+        copiedFiles: 0,
+        error: error.message,
       };
     }
   }

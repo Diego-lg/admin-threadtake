@@ -64,7 +64,7 @@ export async function GET(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -133,13 +133,12 @@ export async function GET(req: Request) {
       effectiveUserId,
       effectivePrefix,
       page,
-      pageSize
+      pageSize,
     );
 
     // 8. Get user folder metadata
-    const userStats = await UserFolderService.getUserFolderMetadata(
-      effectiveUserId
-    );
+    const userStats =
+      await UserFolderService.getUserFolderMetadata(effectiveUserId);
 
     // 9. Format response
     const config = R2Config.getConfig();
@@ -166,7 +165,7 @@ export async function GET(req: Request) {
       files = files.filter(
         (file) =>
           file.name.toLowerCase().includes(searchTerm) ||
-          file.folder.toLowerCase().includes(searchTerm)
+          file.folder.toLowerCase().includes(searchTerm),
       );
     }
 
@@ -208,6 +207,30 @@ export async function GET(req: Request) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    // Add standard user folders even if empty (these are created by default)
+    const standardFolders = [
+      "mockups",
+      "profile-pictures",
+      "assets",
+      "exports",
+    ];
+    const existingFolderNames = new Set(folders.map((f) => f.name));
+
+    standardFolders.forEach((folderName) => {
+      if (!existingFolderNames.has(folderName)) {
+        // Check if this standard folder exists in R2
+        const standardPrefix = `${effectivePrefix}/${folderName}`;
+        folders.push({
+          name: folderName,
+          prefix: `${standardPrefix}/`,
+          fileCount: 0,
+        });
+      }
+    });
+
+    // Sort again to include new folders
+    folders.sort((a, b) => a.name.localeCompare(b.name));
+
     const response: UserFilesResponse = {
       files,
       folders,
@@ -234,7 +257,7 @@ export async function GET(req: Request) {
         page,
         pageSize,
         search: query.search,
-      }
+      },
     );
 
     return NextResponse.json(response);
@@ -286,7 +309,7 @@ export async function DELETE(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -295,29 +318,29 @@ export async function DELETE(req: Request) {
       fileKeys.map(async (fileKey: string) => {
         const hasAccess = await UserFolderService.validateUserFileAccess(
           effectiveUserId,
-          fileKey
+          fileKey,
         );
         if (!hasAccess) {
           throw new Error(`Access denied to file: ${fileKey}`);
         }
 
         return await UserFolderService.deleteUserFile(effectiveUserId, fileKey);
-      })
+      }),
     );
 
     // 6. Process results
     const successful = deleteResults.filter(
-      (result) => result.status === "fulfilled" && result.value === true
+      (result) => result.status === "fulfilled" && result.value === true,
     ).length;
 
     const failed = deleteResults.filter(
       (result) =>
         result.status === "rejected" ||
-        (result.status === "fulfilled" && result.value === false)
+        (result.status === "fulfilled" && result.value === false),
     );
 
     const errors = failed.map((result) =>
-      result.status === "rejected" ? result.reason.message : "Unknown error"
+      result.status === "rejected" ? result.reason.message : "Unknown error",
     );
 
     console.log(
@@ -327,7 +350,7 @@ export async function DELETE(req: Request) {
         successful,
         failed: failed.length,
         errors: errors.slice(0, 5), // Log first 5 errors
-      }
+      },
     );
 
     return NextResponse.json({

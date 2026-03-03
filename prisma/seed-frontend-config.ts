@@ -18,7 +18,7 @@ const navigationConfig = {
 };
 
 const footerConfig = {
-  brandName: "THREAD TAKE",
+  brandName: "AWAQ|AI",
   brandDescription:
     "Premium essentials crafted with the finest materials for everyday luxury.",
   socialLinks: [
@@ -43,7 +43,7 @@ const footerConfig = {
       { label: "Sustainability", href: "/sustainability" },
     ],
   },
-  copyright: "© {year} THREAD TAKE. All rights reserved.",
+  copyright: "© {year} AWAQ|AI. All rights reserved.",
 };
 
 const themeConfig = {

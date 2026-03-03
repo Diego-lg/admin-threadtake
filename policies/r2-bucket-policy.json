@@ -198,8 +198,8 @@
       "Condition": {
         "StringLike": {
           "aws:Referer": [
-            "https://threadtake.com/*",
-            "https://www.threadtake.com/*",
+            "https://awaqai.com/*",
+            "https://www.awaqai.com/*",
             "https://admin.threadtake.com/*"
           ]
         }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth"; // Updated import path
 import prismadb from "@/lib/prismadb";
+import { UserFolderService } from "@/services/user-folder-service";
 
 // Helper function to add CORS headers
 function addCorsHeaders(response: NextResponse) {
@@ -126,11 +127,56 @@ export async function PATCH(req: Request) {
       );
     }
 
+    // Get the current user data before update to check for name change
+    const currentUser = await prismadb.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true },
+    });
+
+    const oldName = currentUser?.name;
+    const newName = updateData.name;
+
+    // Check if name is being changed
+    const isNameChange = newName !== undefined && oldName !== newName;
+
     // Update user in the database
     const updatedUser = await prismadb.user.update({
       where: { id: session.user.id },
       data: updateData, // Use the dynamically built updateData object
     });
+
+    // If name changed, rename the R2 folder
+    if (isNameChange && oldName && newName) {
+      try {
+        console.log(
+          `[PROFILE_API] Name changed from "${oldName}" to "${newName}". Renaming R2 folder for user ${session.user.id}`,
+        );
+
+        const renameResult =
+          await UserFolderService.renameUserFolderOnNameChange(
+            session.user.id,
+            oldName,
+            newName,
+          );
+
+        if (renameResult.success) {
+          console.log(
+            `[PROFILE_API] Successfully renamed folder for user ${session.user.id}: ${renameResult.filesCopied} files copied`,
+          );
+        } else {
+          console.error(
+            `[PROFILE_API] Failed to rename folder for user ${session.user.id}: ${renameResult.error}`,
+          );
+          // Don't fail the request, just log the error
+        }
+      } catch (folderError) {
+        console.error(
+          `[PROFILE_API] Error renaming user folder on name change:`,
+          folderError,
+        );
+        // Don't fail the request if folder rename fails
+      }
+    }
 
     // Return the updated user data (excluding sensitive fields if necessary)
     // You might want to select specific fields to return

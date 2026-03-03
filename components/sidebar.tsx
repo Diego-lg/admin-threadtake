@@ -127,10 +127,10 @@ const Sidebar = ({ params }: SidebarProps) => {
           <Store className="mr-3 h-5 w-5" />
           {isExpanded && <span>Marketplace</span>}
         </Link>
-        {/* Customers Link */}
+        {/* Customers Link - Global Admin */}
         <Link
-          href={`/${storeId}/admin/users`} // Corrected path to admin/users
-          className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800" // Updated hover
+          href={`/admin/users`} // Global admin users page
+          className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
         >
           <Users className="mr-3 h-5 w-5" />
           {isExpanded && <span>Customers</span>}
