@@ -2,6 +2,71 @@ import { NextResponse } from "next/server";
 import prismadb from "@/lib/prismadb";
 import { Prisma } from "@prisma/client"; // Import Prisma types
 import { UserFolderService } from "@/services/user-folder-service";
+import { R2Config } from "@/lib/r2-config";
+import { R2UserStorage, sanitizeUserNameForPath } from "@/lib/r2-user-storage";
+
+// Helper function to check if an image URL actually exists in R2
+// Also checks alternate paths (ID-based vs name-based) to handle folder migrations
+async function checkImageExistsInR2(
+  url: string | null | undefined,
+  userId?: string,
+  userName?: string | null,
+): Promise<boolean> {
+  if (!url) return false;
+
+  try {
+    const r2Config = R2Config.getConfig();
+    const publicBucketUrl = r2Config.publicBucketUrl;
+
+    // If not from our R2 bucket, assume it exists (external URL)
+    if (!url.includes(publicBucketUrl) && !url.includes("r2.dev")) {
+      return true;
+    }
+
+    // Get the relative path from the URL
+    let relativePath = url;
+    if (url.includes(publicBucketUrl)) {
+      relativePath = url.replace(publicBucketUrl + "/", "");
+    } else if (url.includes("r2.dev/")) {
+      relativePath = url.split("r2.dev/")[1];
+    }
+
+    // Check if file exists at the current path
+    const currentExists = await R2UserStorage.fileExists(relativePath);
+    if (currentExists) {
+      return true;
+    }
+
+    // If user info provided, try alternate path (handles folder migrations)
+    if (userId && userName) {
+      const sanitizedName = sanitizeUserNameForPath(userName, userId);
+      const idBasedPath = `users/${userId}/`;
+      const nameBasedPath = `users/${sanitizedName}/`;
+
+      // If currently using ID-based path, check name-based
+      if (relativePath.startsWith(idBasedPath)) {
+        const alternatePath = relativePath.replace(idBasedPath, nameBasedPath);
+        if (await R2UserStorage.fileExists(alternatePath)) {
+          return true;
+        }
+      }
+
+      // If currently using name-based path, check ID-based
+      if (relativePath.startsWith(nameBasedPath)) {
+        const alternatePath = relativePath.replace(nameBasedPath, idBasedPath);
+        if (await R2UserStorage.fileExists(alternatePath)) {
+          return true;
+        }
+      }
+    }
+
+    // File doesn't exist in any location
+    return false;
+  } catch (error) {
+    console.error("[CHECK_IMAGE_EXISTS] Error checking image:", error);
+    return false;
+  }
+}
 
 // GET /api/marketplace/designs - Fetch derived PRODUCTS representing shared designs with filtering/sorting
 export async function GET(req: Request) {
@@ -205,7 +270,8 @@ export async function GET(req: Request) {
 
     // --- Map response using the precisely selected fields ---
     // Use Promise.all to handle async URL transformations
-    const responseData = await Promise.all(
+    // First pass: transform all URLs
+    const transformedData = await Promise.all(
       derivedProducts
         .filter((product) => product.savedDesign) // Ensure savedDesign is linked
         .map(async (product) => {
@@ -262,9 +328,56 @@ export async function GET(req: Request) {
             ratingCount: design.ratingCount,
             createdAt: design.createdAt,
             updatedAt: design.updatedAt,
+
+            // Store transformed URLs for validation
+            _transformedProductImage: transformedProductImage,
+            _transformedDesignImageUrl: transformedDesignImageUrl,
+            _transformedMockupImageUrl: transformedMockupImageUrl,
           };
         }),
     );
+
+    // Second pass: filter out designs where images don't exist in R2
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const responseData: any[] = [];
+    for (const item of transformedData) {
+      // Get creator info for alternate path checking
+      const creatorUserId = item.creator?.id;
+      const creatorUserName = item.creator?.name;
+
+      // Check if any of the main images exist in R2
+      const hasValidProductImage = await checkImageExistsInR2(
+        item._transformedProductImage,
+        creatorUserId,
+        creatorUserName,
+      );
+      const hasValidDesignImage = await checkImageExistsInR2(
+        item._transformedDesignImageUrl,
+        creatorUserId,
+        creatorUserName,
+      );
+      const hasValidMockupImage = await checkImageExistsInR2(
+        item._transformedMockupImageUrl,
+        creatorUserId,
+        creatorUserName,
+      );
+
+      // Only include design if at least one image exists
+      if (hasValidProductImage || hasValidDesignImage || hasValidMockupImage) {
+        // Create clean response without internal fields
+        const {
+          _transformedProductImage,
+          _transformedDesignImageUrl,
+          _transformedMockupImageUrl,
+          ...cleanItem
+        } = item;
+        responseData.push(cleanItem);
+      } else {
+        console.log(
+          `[MARKETPLACE_PRODUCTS_GET] Filtering out design ${item.id} - no valid images in R2`,
+        );
+      }
+    }
 
     console.log(
       `[MARKETPLACE_PRODUCTS_GET] Mapped ${responseData.length} products for response (with precise select).`,
