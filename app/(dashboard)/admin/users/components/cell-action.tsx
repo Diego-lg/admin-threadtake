@@ -36,7 +36,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 
-import { UserColumn } from "./columns";
+import { UserColumn } from "./types";
 
 interface CellActionProps {
   data: UserColumn;

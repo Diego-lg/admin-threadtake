@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prismadb from "@/lib/prismadb";
 import { Prisma } from "@prisma/client"; // Import Prisma types
+import { UserFolderService } from "@/services/user-folder-service";
 
 // GET /api/marketplace/designs - Fetch derived PRODUCTS representing shared designs with filtering/sorting
 export async function GET(req: Request) {
@@ -87,11 +88,11 @@ export async function GET(req: Request) {
     });
     console.log(
       "[MARKETPLACE_PRODUCTS_GET] Prisma Where Clause:",
-      JSON.stringify(whereClause, null, 2)
+      JSON.stringify(whereClause, null, 2),
     );
     console.log(
       "[MARKETPLACE_PRODUCTS_GET] Prisma OrderBy Clause:",
-      JSON.stringify(orderByClause, null, 2)
+      JSON.stringify(orderByClause, null, 2),
     );
 
     // --- Fetch Derived Products ---
@@ -111,6 +112,7 @@ export async function GET(req: Request) {
           // Select specific fields from SavedDesign and its relations
           select: {
             id: true,
+            userId: true, // Include userId for dynamic URL resolution
             designImageUrl: true,
             mockupImageUrl: true,
             description: true,
@@ -161,82 +163,111 @@ export async function GET(req: Request) {
     // const totalCount = await prismadb.product.count({ where: whereClause });
 
     console.log(
-      `[MARKETPLACE_PRODUCTS_GET] Found ${derivedProducts.length} raw derived products for page ${page}.`
+      `[MARKETPLACE_PRODUCTS_GET] Found ${derivedProducts.length} raw derived products for page ${page}.`,
     );
     // Optional: Log the raw products if needed for deep debugging (can be verbose)
     // console.log("[MARKETPLACE_PRODUCTS_GET] Raw Derived Products:", JSON.stringify(derivedProducts, null, 2));
 
-    // --- URL Transformation Logic ---
-    const backendUrl =
-      process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5001";
-    const r2Url =
-      process.env.R2_PUBLIC_BUCKET_URL ||
-      "https://pub-167bcbb6797c48d686d7dacfba94f17f.r2.dev";
+    // --- Dynamic URL Transformation Logic ---
+    // We need to fetch user info for dynamic URL resolution
+    const userIds = [
+      ...new Set(
+        derivedProducts.map((p) => p.savedDesign?.userId).filter(Boolean),
+      ),
+    ];
+    const usersMap = new Map<string, { id: string; name: string | null }>();
 
-    const transformUrl = (url: string | null | undefined): string | null => {
+    if (userIds.length > 0) {
+      const users = await prismadb.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, name: true },
+      });
+      users.forEach((user) => usersMap.set(user.id, user));
+    }
+
+    // Dynamic URL transformer that resolves URLs based on user's folder structure
+    const transformUrl = async (
+      url: string | null | undefined,
+      userId: string | undefined,
+    ): Promise<string | null> => {
       if (!url) return null;
-      // If the URL is a local file path, replace the base with the public R2 URL
-      if (url.startsWith(backendUrl) || url.startsWith("http://127.0.0.1")) {
-        return url.replace(backendUrl, r2Url);
-      }
-      // Return the URL as-is if it's already a public URL (e.g., from Google, Cloudinary)
-      return url;
+
+      // Use UserFolderService to dynamically resolve the URL based on user's folder
+      const user = userId ? usersMap.get(userId) : null;
+      const resolvedUrl = await UserFolderService.resolveImageUrl(
+        url,
+        userId || "",
+        user?.name,
+      );
+      return resolvedUrl;
     };
-    // --- End URL Transformation Logic ---
+    // --- End Dynamic URL Transformation Logic ---
 
     // --- Map response using the precisely selected fields ---
-    const responseData = derivedProducts
-      .filter((product) => product.savedDesign) // Ensure savedDesign is linked
-      .map((product) => {
-        const design = product.savedDesign!; // Non-null assertion as we filtered
+    // Use Promise.all to handle async URL transformations
+    const responseData = await Promise.all(
+      derivedProducts
+        .filter((product) => product.savedDesign) // Ensure savedDesign is linked
+        .map(async (product) => {
+          const design = product.savedDesign!; // Non-null assertion as we filtered
+          const creatorUserId = design.userId;
 
-        // Transform all relevant URLs
-        const transformedProductImage = transformUrl(product.images?.[0]?.url);
-        const transformedDesignImageUrl = transformUrl(design.designImageUrl);
-        const transformedMockupImageUrl = transformUrl(design.mockupImageUrl);
-        const transformedCreatorImage = transformUrl(design.user?.image);
-        // Note: design.user, design.color, design.size now only contain selected fields
-        return {
-          // --- Key identifiers ---
-          id: design.id,
-          productId: product.id,
+          // Transform all relevant URLs (now async)
+          const [
+            transformedProductImage,
+            transformedDesignImageUrl,
+            transformedMockupImageUrl,
+            transformedCreatorImage,
+          ] = await Promise.all([
+            transformUrl(product.images?.[0]?.url, creatorUserId),
+            transformUrl(design.designImageUrl, creatorUserId),
+            transformUrl(design.mockupImageUrl, creatorUserId),
+            transformUrl(design.user?.image, creatorUserId),
+          ]);
 
-          // --- Product details (from derived product) ---
-          name: `Custom Design by: ${design.user?.name ?? "Unknown Creator"}`, // Construct title
-          price: product.price, // Ensure backend sends as number/string compatible with frontend
-          productImage: transformedProductImage || "/placeholder.png",
+          // Note: design.user, design.color, design.size now only contain selected fields
+          return {
+            // --- Key identifiers ---
+            id: design.id,
+            productId: product.id,
 
-          // --- Design details (selected from savedDesign) ---
-          designImageUrl: transformedDesignImageUrl,
-          mockupImageUrl: transformedMockupImageUrl,
-          customText: design.customText,
-          description: design.description,
-          tags: design.tags,
-          usageRights: design.usageRights,
-          color: design.color, // Contains selected { id, name, value }
-          size: design.size, // Contains selected { id, name, value }
+            // --- Product details (from derived product) ---
+            name: `Custom Design by: ${design.user?.name ?? "Unknown Creator"}`, // Construct title
+            price: product.price, // Ensure backend sends as number/string compatible with frontend
+            productImage: transformedProductImage || "/placeholder.png",
 
-          // --- Creator details (selected from savedDesign.user) ---
-          creator: design.user
-            ? {
-                // Contains selected { id, name, image }
-                id: design.user.id,
-                name: design.user.name,
-                image: transformedCreatorImage,
-              }
-            : null,
+            // --- Design details (selected from savedDesign) ---
+            designImageUrl: transformedDesignImageUrl,
+            mockupImageUrl: transformedMockupImageUrl,
+            customText: design.customText,
+            description: design.description,
+            tags: design.tags,
+            usageRights: design.usageRights,
+            color: design.color, // Contains selected { id, name, value }
+            size: design.size, // Contains selected { id, name, value }
 
-          // --- Stats (selected from savedDesign) ---
-          viewCount: design.viewCount,
-          averageRating: design.averageRating,
-          ratingCount: design.ratingCount,
-          createdAt: design.createdAt,
-          updatedAt: design.updatedAt,
-        };
-      });
+            // --- Creator details (selected from savedDesign.user) ---
+            creator: design.user
+              ? {
+                  // Contains selected { id, name, image }
+                  id: design.user.id,
+                  name: design.user.name,
+                  image: transformedCreatorImage,
+                }
+              : null,
+
+            // --- Stats (selected from savedDesign) ---
+            viewCount: design.viewCount,
+            averageRating: design.averageRating,
+            ratingCount: design.ratingCount,
+            createdAt: design.createdAt,
+            updatedAt: design.updatedAt,
+          };
+        }),
+    );
 
     console.log(
-      `[MARKETPLACE_PRODUCTS_GET] Mapped ${responseData.length} products for response (with precise select).`
+      `[MARKETPLACE_PRODUCTS_GET] Mapped ${responseData.length} products for response (with precise select).`,
     );
     // Optional: Log the final response data if needed
     // console.log("[MARKETPLACE_PRODUCTS_GET] Final Response Data:", JSON.stringify(responseData, null, 2));

@@ -7,6 +7,7 @@ import {
   ProfilePictureType,
   sanitizeUserNameForPath,
 } from "../lib/r2-user-storage";
+import { R2Config } from "../lib/r2-config";
 import prismadb from "../lib/prismadb";
 import { folderErrorHandler } from "../lib/r2-folder-error-handler";
 import {
@@ -342,6 +343,53 @@ export class UserFolderService {
   }
 
   /**
+   * Determine which folder type is being used for a user
+   * @param userId - The user ID
+   * @returns Object with folder type and sanitized name (if using name-based)
+   */
+  static async getUserFolderType(
+    userId: string,
+  ): Promise<{ folderType: "name" | "id"; sanitizedName?: string }> {
+    try {
+      // Get user from database
+      const user = await prismadb.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+
+      if (user?.name) {
+        const sanitizedName = sanitizeUserNameForPath(user.name, userId);
+
+        // Check if name-based folder exists
+        const nameFolderExists =
+          await R2UserStorage.userFolderExistsByName(sanitizedName);
+        if (nameFolderExists) {
+          return { folderType: "name", sanitizedName };
+        }
+
+        // Check if ID-based folder exists
+        const idFolderExists = await R2UserStorage.userFolderExists(userId);
+        if (idFolderExists) {
+          return { folderType: "id" };
+        }
+
+        // Neither exists yet, use name-based (will be created)
+        return { folderType: "name", sanitizedName };
+      }
+
+      // No user name, use ID-based
+      return { folderType: "id" };
+    } catch (error) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error determining folder type for ${userId}:`,
+        error,
+      );
+      // Default to ID-based on error
+      return { folderType: "id" };
+    }
+  }
+
+  /**
    * Ensure user folder exists (create if needed) with comprehensive error handling
    * Prefers name-based folders when user has a name set
    * @param userId - The user ID
@@ -635,7 +683,20 @@ export class UserFolderService {
       // Ensure user folder exists with error handling
       await this.ensureUserFolderExists(userId);
 
-      // Generate path
+      // Determine which folder type is being used
+      const folderInfo = await this.getUserFolderType(userId);
+
+      // Generate path based on folder type
+      if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+        return R2UserStorage.generateMockupPathByName(
+          folderInfo.sanitizedName,
+          designId,
+          mockupType,
+          extension,
+        );
+      }
+
+      // Fall back to ID-based path
       return R2UserStorage.generateMockupPath(
         userId,
         designId,
@@ -696,7 +757,19 @@ export class UserFolderService {
       // Ensure user folder exists with error handling
       await this.ensureUserFolderExists(userId);
 
-      // Generate path
+      // Determine which folder type is being used
+      const folderInfo = await this.getUserFolderType(userId);
+
+      // Generate path based on folder type
+      if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+        return R2UserStorage.generateProfilePicturePathByName(
+          folderInfo.sanitizedName,
+          type,
+          extension,
+        );
+      }
+
+      // Fall back to ID-based path
       return R2UserStorage.generateProfilePicturePath(userId, type, extension);
     } catch (error: any) {
       console.error(
@@ -753,7 +826,20 @@ export class UserFolderService {
       // Ensure user folder exists with error handling
       await this.ensureUserFolderExists(userId);
 
-      // Generate path
+      // Determine which folder type is being used
+      const folderInfo = await this.getUserFolderType(userId);
+
+      // Generate path based on folder type
+      if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+        return R2UserStorage.generateAssetPathByName(
+          folderInfo.sanitizedName,
+          assetType,
+          designId,
+          extension,
+        );
+      }
+
+      // Fall back to ID-based path
       return R2UserStorage.generateAssetPath(
         userId,
         assetType,
@@ -811,7 +897,19 @@ export class UserFolderService {
       // Ensure user folder exists with error handling
       await this.ensureUserFolderExists(userId);
 
-      // Generate path
+      // Determine which folder type is being used
+      const folderInfo = await this.getUserFolderType(userId);
+
+      // Generate path based on folder type
+      if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+        return R2UserStorage.generateExportPathByName(
+          folderInfo.sanitizedName,
+          exportType,
+          filename,
+        );
+      }
+
+      // Fall back to ID-based path
       return R2UserStorage.generateExportPath(userId, exportType, filename);
     } catch (error: any) {
       console.error(`[USER_FOLDER_SERVICE] Error getting export path:`, error);
@@ -1106,6 +1204,88 @@ export class UserFolderService {
         error,
       );
       return false;
+    }
+  }
+
+  /**
+   * Resolve an image URL to the correct R2 path
+   * Checks both ID-based and name-based paths to find the image
+   * Useful for fixing legacy URLs or when folder migration is incomplete
+   * @param imageUrl - The image URL to resolve
+   * @param userId - The user ID
+   * @param userName - The user's name (optional, for name-based path checking)
+   * @returns The resolved URL or original URL if not found
+   */
+  static async resolveImageUrl(
+    imageUrl: string | null | undefined,
+    userId: string,
+    userName?: string | null,
+  ): Promise<string | null> {
+    if (!imageUrl) return null;
+
+    try {
+      const r2Config = R2Config.getConfig();
+      const publicBucketUrl = r2Config.publicBucketUrl;
+
+      // If image is not from our R2 bucket, return as-is
+      if (!imageUrl.includes(publicBucketUrl) && !imageUrl.includes("r2.dev")) {
+        return imageUrl;
+      }
+
+      // Get the path part of the URL
+      let relativePath = imageUrl;
+      if (imageUrl.includes(publicBucketUrl)) {
+        relativePath = imageUrl.replace(publicBucketUrl + "/", "");
+      } else if (imageUrl.includes("r2.dev/")) {
+        relativePath = imageUrl.split("r2.dev/")[1];
+      }
+
+      // Check if file exists at the current path
+      const currentExists = await R2UserStorage.fileExists(relativePath);
+      if (currentExists) {
+        return imageUrl;
+      }
+
+      // If name provided, check name-based path
+      if (userName) {
+        const sanitizedName = sanitizeUserNameForPath(userName, userId);
+        const idBasedPath = `users/${userId}/`;
+        const nameBasedPath = `users/${sanitizedName}/`;
+
+        // If currently using ID-based path, check name-based
+        if (relativePath.startsWith(idBasedPath)) {
+          const alternatePath = relativePath.replace(
+            idBasedPath,
+            nameBasedPath,
+          );
+          const altExists = await R2UserStorage.fileExists(alternatePath);
+          if (altExists) {
+            return `${publicBucketUrl}/${alternatePath}`;
+          }
+        }
+
+        // If currently using name-based path, check ID-based
+        if (relativePath.startsWith(nameBasedPath)) {
+          const alternatePath = relativePath.replace(
+            nameBasedPath,
+            idBasedPath,
+          );
+          const altExists = await R2UserStorage.fileExists(alternatePath);
+          if (altExists) {
+            return `${publicBucketUrl}/${alternatePath}`;
+          }
+        }
+      }
+
+      // Return original URL if not found in either location
+      console.warn(
+        `[USER_FOLDER_SERVICE] Could not resolve image URL ${imageUrl} for user ${userId}`,
+      );
+      return imageUrl;
+    } catch (error) {
+      console.error(`[USER_FOLDER_SERVICE] Error resolving image URL:`, error);
+      // Return original URL on error
+      return imageUrl;
     }
   }
 }

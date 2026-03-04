@@ -17,17 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { CellAction } from "./cell-action";
+import { UserColumn } from "./types";
 
-export type UserColumn = {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  status: UserStatus;
-  createdAt: string;
-  maxSavedDesigns: number | null;
-  effectiveLimit: number;
-};
+// Re-export UserColumn for convenience
+export type { UserColumn };
 
 export const columns: ColumnDef<UserColumn>[] = [
   {

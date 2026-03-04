@@ -32,8 +32,24 @@ async function uploadToR2(
   folder: string = "mockups",
 ): Promise<string> {
   try {
-    // Create a unique filename with user folder structure
-    const userFolder = `users/${userId}/${folder}`;
+    // Import UserFolderService to get correct folder path based on folder type
+    const { UserFolderService } =
+      await import("@/services/user-folder-service");
+
+    // Ensure user folder exists (this will create name-based folder if user has name)
+    await UserFolderService.ensureUserFolderExists(userId);
+
+    // Get the folder type being used (name-based or ID-based)
+    const folderInfo = await UserFolderService.getUserFolderType(userId);
+
+    // Build the path based on folder type
+    let userFolder: string;
+    if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+      userFolder = `users/${folderInfo.sanitizedName}/${folder}`;
+    } else {
+      userFolder = `users/${userId}/${folder}`;
+    }
+
     const fullFilename = `${userFolder}/${filename}`;
 
     // Get R2 configuration

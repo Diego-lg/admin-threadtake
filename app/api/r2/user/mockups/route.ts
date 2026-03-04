@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -109,22 +109,43 @@ export async function GET(req: Request) {
     // 5. Ensure user folder exists
     await UserFolderService.ensureUserFolderExists(effectiveUserId);
 
-    // 6. Determine the prefix for mockups
-    let effectivePrefix = UserFolderPaths.getMockupsPath(effectiveUserId);
+    // 6. Determine the prefix for mockups based on folder type
+    const folderInfo =
+      await UserFolderService.getUserFolderType(effectiveUserId);
 
-    if (query.designId) {
-      effectivePrefix = UserFolderPaths.getDesignMockupPath(
-        effectiveUserId,
-        query.designId
-      );
-    }
+    let effectivePrefix: string;
 
-    if (query.mockupType && query.designId) {
-      effectivePrefix = UserFolderPaths.getMockupTypePath(
-        effectiveUserId,
-        query.designId,
-        query.mockupType
+    if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+      // Use name-based paths
+      effectivePrefix = UserFolderPaths.getMockupsPathByName(
+        folderInfo.sanitizedName,
       );
+
+      if (query.designId) {
+        effectivePrefix = `users/${folderInfo.sanitizedName}/mockups/${query.designId}`;
+      }
+
+      if (query.mockupType && query.designId) {
+        effectivePrefix = `users/${folderInfo.sanitizedName}/mockups/${query.designId}/${query.mockupType}`;
+      }
+    } else {
+      // Use ID-based paths
+      effectivePrefix = UserFolderPaths.getMockupsPath(effectiveUserId);
+
+      if (query.designId) {
+        effectivePrefix = UserFolderPaths.getDesignMockupPath(
+          effectiveUserId,
+          query.designId,
+        );
+      }
+
+      if (query.mockupType && query.designId) {
+        effectivePrefix = UserFolderPaths.getMockupTypePath(
+          effectiveUserId,
+          query.designId,
+          query.mockupType,
+        );
+      }
     }
 
     // 7. List mockup files
@@ -132,7 +153,7 @@ export async function GET(req: Request) {
       effectiveUserId,
       effectivePrefix,
       page,
-      pageSize
+      pageSize,
     );
 
     // 8. Format mockup response
@@ -182,7 +203,7 @@ export async function GET(req: Request) {
       switch (query.sortBy) {
         case "design":
           comparison = (a.design?.description || "").localeCompare(
-            b.design?.description || ""
+            b.design?.description || "",
           );
           break;
         case "type":
@@ -202,15 +223,22 @@ export async function GET(req: Request) {
     // 12. Get design summary information
     const designSummary = await Promise.all(
       designIds.map(async (designId) => {
-        const designPrefix = UserFolderPaths.getDesignMockupPath(
-          effectiveUserId,
-          designId
-        );
+        // Use folder info to determine correct prefix
+        let designPrefix: string;
+        if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+          designPrefix = `users/${folderInfo.sanitizedName}/mockups/${designId}`;
+        } else {
+          designPrefix = UserFolderPaths.getDesignMockupPath(
+            effectiveUserId,
+            designId,
+          );
+        }
+
         const designResult = await UserFolderService.listUserFilesPaginated(
           effectiveUserId,
           designPrefix,
           0,
-          1000 // Get all mockups for this design
+          1000, // Get all mockups for this design
         );
 
         const design = designMap.get(designId);
@@ -219,9 +247,9 @@ export async function GET(req: Request) {
             ? new Date(
                 Math.max(
                   ...designResult.files.map((f: any) =>
-                    new Date(f.lastModified).getTime()
-                  )
-                )
+                    new Date(f.lastModified).getTime(),
+                  ),
+                ),
               )
             : design?.createdAt || new Date();
 
@@ -232,7 +260,7 @@ export async function GET(req: Request) {
           createdAt: design?.createdAt || new Date(),
           lastModified,
         };
-      })
+      }),
     );
 
     // 13. Calculate statistics
@@ -265,7 +293,7 @@ export async function GET(req: Request) {
         designCount: designIds.length,
         page,
         pageSize,
-      }
+      },
     );
 
     return NextResponse.json(response);
@@ -311,11 +339,15 @@ export async function DELETE(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // 5. Determine which files to delete
+    // 5. Determine folder type and correct prefix
+    const folderInfo =
+      await UserFolderService.getUserFolderType(effectiveUserId);
+
+    // 6. Determine which files to delete
     let keysToDelete: string[] = [];
 
     if (mockupKeys && Array.isArray(mockupKeys)) {
@@ -323,15 +355,20 @@ export async function DELETE(req: Request) {
       keysToDelete = mockupKeys;
     } else if (designId) {
       // Delete all mockups for a specific design
-      const designPrefix = UserFolderPaths.getDesignMockupPath(
-        effectiveUserId,
-        designId
-      );
+      let designPrefix: string;
+      if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+        designPrefix = `users/${folderInfo.sanitizedName}/mockups/${designId}`;
+      } else {
+        designPrefix = UserFolderPaths.getDesignMockupPath(
+          effectiveUserId,
+          designId,
+        );
+      }
       const result = await UserFolderService.listUserFilesPaginated(
         effectiveUserId,
         designPrefix,
         0,
-        1000
+        1000,
       );
       keysToDelete = result.files.map((file: any) => file.key);
     } else {
@@ -353,29 +390,29 @@ export async function DELETE(req: Request) {
       keysToDelete.map(async (fileKey: string) => {
         const hasAccess = await UserFolderService.validateUserFileAccess(
           effectiveUserId,
-          fileKey
+          fileKey,
         );
         if (!hasAccess) {
           throw new Error(`Access denied to mockup: ${fileKey}`);
         }
 
         return await UserFolderService.deleteUserFile(effectiveUserId, fileKey);
-      })
+      }),
     );
 
     // 7. Process results
     const successful = deleteResults.filter(
-      (result) => result.status === "fulfilled" && result.value === true
+      (result) => result.status === "fulfilled" && result.value === true,
     ).length;
 
     const failed = deleteResults.filter(
       (result) =>
         result.status === "rejected" ||
-        (result.status === "fulfilled" && result.value === false)
+        (result.status === "fulfilled" && result.value === false),
     );
 
     const errors = failed.map((result) =>
-      result.status === "rejected" ? result.reason.message : "Unknown error"
+      result.status === "rejected" ? result.reason.message : "Unknown error",
     );
 
     // 8. If all mockups for a design were deleted, optionally clean up the design
@@ -389,13 +426,13 @@ export async function DELETE(req: Request) {
 
         if (design) {
           console.log(
-            `[R2_USER_MOCKUPS_DELETE] Design ${designId} still exists in database, keeping record`
+            `[R2_USER_MOCKUPS_DELETE] Design ${designId} still exists in database, keeping record`,
           );
         }
       } catch (error) {
         console.error(
           `[R2_USER_MOCKUPS_DELETE] Error checking design ${designId}:`,
-          error
+          error,
         );
       }
     }
@@ -408,7 +445,7 @@ export async function DELETE(req: Request) {
         successful,
         failed: failed.length,
         errors: errors.slice(0, 5),
-      }
+      },
     );
 
     return NextResponse.json({

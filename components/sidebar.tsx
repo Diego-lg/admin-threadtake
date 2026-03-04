@@ -42,7 +42,7 @@ const Sidebar = ({ params }: SidebarProps) => {
         {isExpanded && (
           <h1 className="text-2xl font-bold">
             {/* Link the main logo back to the root or store dashboard */}
-            <Link href={`/${storeId}`}>TeeAdmin</Link>
+            <Link href={`/${storeId}`}>Admin Panel</Link>
           </h1>
         )}
         <button className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">

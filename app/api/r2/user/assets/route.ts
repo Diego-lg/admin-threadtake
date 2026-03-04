@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -110,14 +110,32 @@ export async function GET(req: Request) {
     // 5. Ensure user folder exists
     await UserFolderService.ensureUserFolderExists(effectiveUserId);
 
-    // 6. Determine the prefix for assets
-    let effectivePrefix = UserFolderPaths.getAssetsPath(effectiveUserId);
+    // 6. Determine the prefix for assets based on folder type
+    const folderInfo =
+      await UserFolderService.getUserFolderType(effectiveUserId);
 
-    if (query.assetType) {
-      effectivePrefix = UserFolderPaths.getAssetTypePath(
-        effectiveUserId,
-        query.assetType
+    let effectivePrefix: string;
+
+    if (folderInfo.folderType === "name" && folderInfo.sanitizedName) {
+      // Use name-based paths
+      effectivePrefix = UserFolderPaths.getAssetsPathByName(
+        folderInfo.sanitizedName,
       );
+      if (query.assetType) {
+        effectivePrefix = UserFolderPaths.getAssetTypePath(
+          folderInfo.sanitizedName as any,
+          query.assetType,
+        );
+      }
+    } else {
+      // Use ID-based paths
+      effectivePrefix = UserFolderPaths.getAssetsPath(effectiveUserId);
+      if (query.assetType) {
+        effectivePrefix = UserFolderPaths.getAssetTypePath(
+          effectiveUserId,
+          query.assetType,
+        );
+      }
     }
 
     // 7. List asset files
@@ -125,7 +143,7 @@ export async function GET(req: Request) {
       effectiveUserId,
       effectivePrefix,
       page,
-      pageSize
+      pageSize,
     );
 
     // 8. Format asset response
@@ -133,7 +151,7 @@ export async function GET(req: Request) {
     let assets = result.files.map((file: any) => {
       const relativePath = file.key.replace(
         UserFolderPaths.getAssetsPath(effectiveUserId) + "/",
-        ""
+        "",
       );
       const pathParts = relativePath.split("/");
 
@@ -170,7 +188,7 @@ export async function GET(req: Request) {
         (asset) =>
           asset.name.toLowerCase().includes(searchTerm) ||
           asset.assetType.toLowerCase().includes(searchTerm) ||
-          (asset.designId && asset.designId.toLowerCase().includes(searchTerm))
+          (asset.designId && asset.designId.toLowerCase().includes(searchTerm)),
       );
     }
 
@@ -205,13 +223,13 @@ export async function GET(req: Request) {
       assetTypes.map(async (type) => {
         const typePrefix = UserFolderPaths.getAssetTypePath(
           effectiveUserId,
-          type
+          type,
         );
         const typeResult = await UserFolderService.listUserFilesPaginated(
           effectiveUserId,
           typePrefix,
           0,
-          1000
+          1000,
         );
 
         return {
@@ -219,10 +237,10 @@ export async function GET(req: Request) {
           count: typeResult.files.length,
           totalSize: typeResult.files.reduce(
             (sum: number, file: any) => sum + file.size,
-            0
+            0,
           ),
         };
-      })
+      }),
     );
 
     // 12. Get design statistics (assets grouped by design)
@@ -237,7 +255,7 @@ export async function GET(req: Request) {
           assetCount: designAssets.length,
           totalSize: designAssets.reduce((sum, a) => sum + a.size, 0),
         };
-      })
+      }),
     );
 
     // 13. Calculate overall statistics
@@ -270,7 +288,7 @@ export async function GET(req: Request) {
         typeCount: assetTypeStats.length,
         page,
         pageSize,
-      }
+      },
     );
 
     return NextResponse.json(response);
@@ -307,7 +325,7 @@ export async function POST(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -324,7 +342,7 @@ export async function POST(req: Request) {
             "Missing targetAssetType for moveToType operation",
             {
               status: 400,
-            }
+            },
           );
         }
 
@@ -333,7 +351,7 @@ export async function POST(req: Request) {
             // Validate access
             const hasAccess = await UserFolderService.validateUserFileAccess(
               userId,
-              assetKey
+              assetKey,
             );
             if (!hasAccess) {
               throw new Error(`Access denied to asset: ${assetKey}`);
@@ -350,7 +368,7 @@ export async function POST(req: Request) {
               userId,
               targetAssetType,
               undefined,
-              fileName.split(".").pop() || ""
+              fileName.split(".").pop() || "",
             );
 
             // In a real implementation, you would copy/move the file here
@@ -360,7 +378,7 @@ export async function POST(req: Request) {
               newKey: newPath.key,
               newUrl: newPath.publicUrl,
             };
-          })
+          }),
         );
         break;
 
@@ -370,7 +388,7 @@ export async function POST(req: Request) {
             "Missing targetAssetType or targetDesignId for moveToDesign operation",
             {
               status: 400,
-            }
+            },
           );
         }
 
@@ -379,7 +397,7 @@ export async function POST(req: Request) {
             // Validate access
             const hasAccess = await UserFolderService.validateUserFileAccess(
               userId,
-              assetKey
+              assetKey,
             );
             if (!hasAccess) {
               throw new Error(`Access denied to asset: ${assetKey}`);
@@ -396,7 +414,7 @@ export async function POST(req: Request) {
               userId,
               targetAssetType,
               targetDesignId,
-              fileName.split(".").pop() || ""
+              fileName.split(".").pop() || "",
             );
 
             // In a real implementation, you would copy/move the file here
@@ -406,7 +424,7 @@ export async function POST(req: Request) {
               newUrl: newPath.publicUrl,
               designId: targetDesignId,
             };
-          })
+          }),
         );
         break;
 
@@ -418,10 +436,10 @@ export async function POST(req: Request) {
 
     // 6. Process results
     const successful = results.filter(
-      (result) => result.status === "fulfilled"
+      (result) => result.status === "fulfilled",
     ).length;
     const failed = results.filter(
-      (result) => result.status === "rejected"
+      (result) => result.status === "rejected",
     ).length;
     const errors = results
       .filter((result) => result.status === "rejected")
@@ -435,7 +453,7 @@ export async function POST(req: Request) {
         failed,
         targetAssetType,
         targetDesignId,
-      }
+      },
     );
 
     return NextResponse.json({
@@ -444,7 +462,7 @@ export async function POST(req: Request) {
       processed: successful,
       failed,
       results: results.map((r) =>
-        r.status === "fulfilled" ? r.value : r.reason
+        r.status === "fulfilled" ? r.value : r.reason,
       ),
       errors: errors.length > 0 ? errors : undefined,
     });
@@ -496,13 +514,13 @@ export async function DELETE(req: Request) {
       // Delete all assets of a specific type
       const typePrefix = UserFolderPaths.getAssetTypePath(
         effectiveUserId,
-        assetType
+        assetType,
       );
       const result = await UserFolderService.listUserFilesPaginated(
         effectiveUserId,
         typePrefix,
         0,
-        1000
+        1000,
       );
       keysToDelete = result.files.map((file: any) => file.key);
     } else {
@@ -523,7 +541,7 @@ export async function DELETE(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -532,29 +550,29 @@ export async function DELETE(req: Request) {
       keysToDelete.map(async (fileKey: string) => {
         const hasAccess = await UserFolderService.validateUserFileAccess(
           effectiveUserId,
-          fileKey
+          fileKey,
         );
         if (!hasAccess) {
           throw new Error(`Access denied to asset: ${fileKey}`);
         }
 
         return await UserFolderService.deleteUserFile(effectiveUserId, fileKey);
-      })
+      }),
     );
 
     // 7. Process results
     const successful = deleteResults.filter(
-      (result) => result.status === "fulfilled" && result.value === true
+      (result) => result.status === "fulfilled" && result.value === true,
     ).length;
 
     const failed = deleteResults.filter(
       (result) =>
         result.status === "rejected" ||
-        (result.status === "fulfilled" && result.value === false)
+        (result.status === "fulfilled" && result.value === false),
     );
 
     const errors = failed.map((result) =>
-      result.status === "rejected" ? result.reason.message : "Unknown error"
+      result.status === "rejected" ? result.reason.message : "Unknown error",
     );
 
     console.log(
@@ -565,7 +583,7 @@ export async function DELETE(req: Request) {
         successful,
         failed: failed.length,
         errors: errors.slice(0, 5),
-      }
+      },
     );
 
     return NextResponse.json({
