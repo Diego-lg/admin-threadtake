@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prismadb from "@/lib/prismadb";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3"; // Import S3 client
 import { Prisma } from "@prisma/client"; // Import Prisma
+import { UserFolderService } from "@/services/user-folder-service";
 
 // PATCH /api/designs/[designId] - Update a specific saved design
 export async function PATCH(
@@ -343,9 +344,43 @@ export async function GET(
       // Log the error but continue serving the request
     }
 
+    // Dynamically resolve image URLs based on creator's current folder
+    // This handles cases where user changed their name and folder structure changed
+    const [
+      resolvedDesignImageUrl,
+      resolvedMockupImageUrl,
+      resolvedUploadedLogoUrl,
+      resolvedUploadedPatternUrl,
+    ] = await Promise.all([
+      UserFolderService.resolveImageUrl(
+        design.designImageUrl,
+        design.userId,
+        design.user?.name,
+      ),
+      UserFolderService.resolveImageUrl(
+        design.mockupImageUrl,
+        design.userId,
+        design.user?.name,
+      ),
+      UserFolderService.resolveImageUrl(
+        design.uploadedLogoUrl,
+        design.userId,
+        design.user?.name,
+      ),
+      UserFolderService.resolveImageUrl(
+        design.uploadedPatternUrl,
+        design.userId,
+        design.user?.name,
+      ),
+    ]);
+
     // Map response to rename 'user' to 'creator'
     const responseData = {
       ...design,
+      designImageUrl: resolvedDesignImageUrl,
+      mockupImageUrl: resolvedMockupImageUrl,
+      uploadedLogoUrl: resolvedUploadedLogoUrl,
+      uploadedPatternUrl: resolvedUploadedPatternUrl,
       product: productDetails, // Embed the fetched product details (derived or base)
       creator: design.user
         ? {

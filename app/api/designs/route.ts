@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prismadb from "@/lib/prismadb";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { UserFolderService } from "@/services/user-folder-service";
 
 // Helper function to get or create the general settings
 async function getGeneralSettings() {
@@ -216,6 +217,12 @@ export async function GET(req: Request) {
 
     const userId = session.user.id;
 
+    // Get user info for dynamic folder resolution
+    const user = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
     const savedDesigns = await prismadb.savedDesign.findMany({
       where: {
         userId: userId, // Use userId from verified token
@@ -241,7 +248,49 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json(savedDesigns);
+    // Dynamically resolve image URLs based on user's current folder
+    // This handles cases where user changed their name and folder structure changed
+    const resolvedDesigns = await Promise.all(
+      savedDesigns.map(async (design) => {
+        const [
+          resolvedDesignImageUrl,
+          resolvedMockupImageUrl,
+          resolvedUploadedLogoUrl,
+          resolvedUploadedPatternUrl,
+        ] = await Promise.all([
+          UserFolderService.resolveImageUrl(
+            design.designImageUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.mockupImageUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.uploadedLogoUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.uploadedPatternUrl,
+            userId,
+            user?.name,
+          ),
+        ]);
+
+        return {
+          ...design,
+          designImageUrl: resolvedDesignImageUrl,
+          mockupImageUrl: resolvedMockupImageUrl,
+          uploadedLogoUrl: resolvedUploadedLogoUrl,
+          uploadedPatternUrl: resolvedUploadedPatternUrl,
+        };
+      }),
+    );
+
+    return NextResponse.json(resolvedDesigns);
   } catch (error) {
     console.error("[DESIGNS_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });

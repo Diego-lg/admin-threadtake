@@ -1210,10 +1210,11 @@ export class UserFolderService {
   /**
    * Resolve an image URL to the correct R2 path
    * Checks both ID-based and name-based paths to find the image
+   * Also attempts to extract and check potential old folder names from the URL
    * Useful for fixing legacy URLs or when folder migration is incomplete
    * @param imageUrl - The image URL to resolve
    * @param userId - The user ID
-   * @param userName - The user's name (optional, for name-based path checking)
+   * @param userName - The user's current name (optional, for name-based path checking)
    * @returns The resolved URL or original URL if not found
    */
   static async resolveImageUrl(
@@ -1240,41 +1241,98 @@ export class UserFolderService {
         relativePath = imageUrl.split("r2.dev/")[1];
       }
 
-      // Check if file exists at the current path
+      // Helper function to check if file exists and return resolved URL
+      const checkAndReturn = async (path: string): Promise<string | null> => {
+        const exists = await R2UserStorage.fileExists(path);
+        if (exists) {
+          return `${publicBucketUrl}/${path}`;
+        }
+        return null;
+      };
+
+      // 1. Check if file exists at the current/stored path
       const currentExists = await R2UserStorage.fileExists(relativePath);
       if (currentExists) {
         return imageUrl;
       }
 
-      // If name provided, check name-based path
-      if (userName) {
-        const sanitizedName = sanitizeUserNameForPath(userName, userId);
-        const idBasedPath = `users/${userId}/`;
-        const nameBasedPath = `users/${sanitizedName}/`;
+      // 2. Build possible paths to check
+      const idBasedPath = `users/${userId}/`;
+      const sanitizedName = userName
+        ? sanitizeUserNameForPath(userName, userId)
+        : null;
+      const nameBasedPath = sanitizedName ? `users/${sanitizedName}/` : null;
 
-        // If currently using ID-based path, check name-based
+      // 3. Try swapping between ID-based and name-based paths (using current name)
+      if (nameBasedPath) {
+        // If currently using ID-based path, try name-based
         if (relativePath.startsWith(idBasedPath)) {
           const alternatePath = relativePath.replace(
             idBasedPath,
             nameBasedPath,
           );
-          const altExists = await R2UserStorage.fileExists(alternatePath);
-          if (altExists) {
-            return `${publicBucketUrl}/${alternatePath}`;
-          }
+          const result = await checkAndReturn(alternatePath);
+          if (result) return result;
         }
 
-        // If currently using name-based path, check ID-based
+        // If currently using name-based path, try ID-based
         if (relativePath.startsWith(nameBasedPath)) {
           const alternatePath = relativePath.replace(
             nameBasedPath,
             idBasedPath,
           );
-          const altExists = await R2UserStorage.fileExists(alternatePath);
-          if (altExists) {
-            return `${publicBucketUrl}/${alternatePath}`;
+          const result = await checkAndReturn(alternatePath);
+          if (result) return result;
+        }
+      }
+
+      // 4. Try to extract potential old folder names from the URL and check those
+      // This handles the case where user changed their name - old files might be in old name folder
+      const urlPathParts = relativePath.split("/");
+      if (urlPathParts.length >= 2 && urlPathParts[0] === "users") {
+        const potentialOldFolder = urlPathParts[1];
+
+        // Skip if it's already the userId or current sanitized name
+        if (
+          potentialOldFolder !== userId &&
+          potentialOldFolder !== sanitizedName
+        ) {
+          // This is a potential old folder name - check if file exists at original path
+          const originalPathExists =
+            await R2UserStorage.fileExists(relativePath);
+          if (originalPathExists) {
+            console.log(
+              `[RESOLVE_URL] File exists at original path: ${relativePath}`,
+            );
+            return imageUrl;
+          }
+
+          // Also try the old folder with current user ID or name
+          const fileName = urlPathParts.slice(2).join("/");
+
+          // Try with user ID
+          const withIdPath = `users/${userId}/${fileName}`;
+          const withIdResult = await checkAndReturn(withIdPath);
+          if (withIdResult) return withIdResult;
+
+          // Try with current name
+          if (sanitizedName) {
+            const withNamePath = `users/${sanitizedName}/${fileName}`;
+            const withNameResult = await checkAndReturn(withNamePath);
+            if (withNameResult) return withNameResult;
           }
         }
+      }
+
+      // 5. Try to list files in user's folders to find matching file by name
+      // This is a more expensive operation but handles edge cases
+      const matchingPath = await this.findMatchingFileInUserFolders(
+        relativePath,
+        userId,
+        sanitizedName,
+      );
+      if (matchingPath) {
+        return `${publicBucketUrl}/${matchingPath}`;
       }
 
       // Return original URL if not found in either location
@@ -1286,6 +1344,64 @@ export class UserFolderService {
       console.error(`[USER_FOLDER_SERVICE] Error resolving image URL:`, error);
       // Return original URL on error
       return imageUrl;
+    }
+  }
+
+  /**
+   * Find a matching file in user folders by searching for files with matching filename
+   * This handles cases where the folder structure changed but filename stayed the same
+   * @param originalPath - The original path to match
+   * @param userId - The user ID
+   * @param sanitizedName - The current sanitized user name
+   * @returns The resolved path or null if not found
+   */
+  private static async findMatchingFileInUserFolders(
+    originalPath: string,
+    userId: string,
+    sanitizedName?: string | null,
+  ): Promise<string | null> {
+    try {
+      // Extract just the filename from the path
+      const pathParts = originalPath.split("/");
+      const fileName = pathParts[pathParts.length - 1];
+
+      if (!fileName) return null;
+
+      // Search in ID-based folder
+      const files = await R2UserStorage.listUserFiles(userId, "", 1000);
+
+      // Search in name-based folder if it exists
+      let nameBasedFiles: { key: string; size: number }[] = [];
+      if (sanitizedName) {
+        try {
+          // Use listAllFilesInFolder with the name-based path
+          nameBasedFiles = await R2UserStorage.listAllFilesInFolder(
+            `users/${sanitizedName}/`,
+          );
+        } catch (e) {
+          // Folder might not exist, ignore
+        }
+      }
+
+      // Combine all files and search for matching filename
+      const allFiles = [...files, ...nameBasedFiles];
+
+      for (const file of allFiles) {
+        if (file.key.endsWith(fileName)) {
+          console.log(
+            `[USER_FOLDER_SERVICE] Found matching file: ${file.key} for ${originalPath}`,
+          );
+          return file.key;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error(
+        `[USER_FOLDER_SERVICE] Error finding matching file:`,
+        error,
+      );
+      return null;
     }
   }
 }

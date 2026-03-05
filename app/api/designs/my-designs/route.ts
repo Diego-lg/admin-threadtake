@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 
 import prismadb from "@/lib/prismadb";
+import { UserFolderService } from "@/services/user-folder-service";
 
 export async function GET(req: Request) {
   console.log("--- [MY_DESIGNS_GET] Handler Entered ---");
@@ -107,9 +108,57 @@ export async function GET(req: Request) {
     }
     // --- End Cursor Pagination ---
 
+    // Get user info for dynamic folder resolution
+    const user = await prismadb.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    // Dynamically resolve image URLs based on user's current folder
+    // This handles cases where user changed their name and folder structure changed
+    const resolvedDesigns = await Promise.all(
+      designs.map(async (design) => {
+        const [
+          resolvedDesignImageUrl,
+          resolvedMockupImageUrl,
+          resolvedUploadedLogoUrl,
+          resolvedUploadedPatternUrl,
+        ] = await Promise.all([
+          UserFolderService.resolveImageUrl(
+            design.designImageUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.mockupImageUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.uploadedLogoUrl,
+            userId,
+            user?.name,
+          ),
+          UserFolderService.resolveImageUrl(
+            design.uploadedPatternUrl,
+            userId,
+            user?.name,
+          ),
+        ]);
+
+        return {
+          ...design,
+          designImageUrl: resolvedDesignImageUrl,
+          mockupImageUrl: resolvedMockupImageUrl,
+          uploadedLogoUrl: resolvedUploadedLogoUrl,
+          uploadedPatternUrl: resolvedUploadedPatternUrl,
+        };
+      }),
+    );
+
     // Return designs, pagination info (nextCursor), total count, and the effective limit
     return NextResponse.json({
-      designs: designs,
+      designs: resolvedDesigns,
       nextCursor: nextCursor,
       totalDesigns: totalDesigns,
       limit: effectiveLimit,
