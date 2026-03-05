@@ -67,7 +67,7 @@ export const BillboardForm: React.FC<BillboardFormProps> = ({
       if (initialData) {
         await axios.patch(
           `/api/${params.storeId}/billboards/${billboardId}`,
-          data
+          data,
         );
       } else {
         await axios.post(`/api/${params.storeId}/billboards`, data);
@@ -141,6 +141,8 @@ export const BillboardForm: React.FC<BillboardFormProps> = ({
                     disabled={loading}
                     onChange={(url) => field.onChange(url)}
                     onRemove={() => field.onChange("")}
+                    contentType="admin"
+                    adminContentType="billboards"
                   />
                 </FormControl>
                 <FormMessage />

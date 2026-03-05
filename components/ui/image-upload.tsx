@@ -20,6 +20,20 @@ interface ImageUploadProps {
   onChange: (value: string) => void;
   onRemove: (value: string) => void;
   value: string[];
+  contentType?:
+    | "mockups"
+    | "profile-pictures"
+    | "assets"
+    | "exports"
+    | "admin"
+    | "all";
+  adminContentType?:
+    | "billboards"
+    | "categories"
+    | "products"
+    | "promotions"
+    | "assets"
+    | "settings";
 }
 
 const ImageUpload: React.FC<ImageUploadProps> = ({
@@ -27,11 +41,13 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
   onChange,
   onRemove,
   value,
+  contentType = "assets", // Default to assets, can be "admin" for admin panel
+  adminContentType, // Admin subfolder type (billboards, categories, etc.)
 }) => {
   const [isMounted, setIsMounted] = useState(false);
   // State for API response
   const [folders, setFolders] = useState<{ name: string; prefix: string }[]>(
-    []
+    [],
   );
   const [images, setImages] = useState<
     { key: string; url: string; lastModified?: Date }[]
@@ -54,14 +70,24 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     setFolders([]); // Clear previous state
     setImages([]);
     try {
+      // Build query params - include contentType if it's not the default
+      const params = new URLSearchParams();
+      if (prefix) {
+        params.set("prefix", prefix);
+      }
+      // Only add contentType if it's not the default "assets"
+      if (contentType && contentType !== "assets") {
+        params.set("contentType", contentType);
+      }
+
       const response = await axios.get<{
         folders: { name: string; prefix: string }[];
-        images: { key: string; url: string; lastModified?: Date }[];
+        files: { key: string; url: string; lastModified?: Date }[];
         currentPrefix: string;
-      }>(`/api/r2-images?prefix=${encodeURIComponent(prefix)}`); // Pass prefix
+      }>(`/api/r2-images?${params.toString()}`);
 
       setFolders(response.data.folders || []);
-      setImages(response.data.images || []);
+      setImages(response.data.files || []);
       setCurrentPrefix(response.data.currentPrefix || ""); // Update current prefix state
     } catch (error) {
       console.error(`Error fetching images for prefix "${prefix}":`, error);
@@ -204,13 +230,19 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                             body: JSON.stringify({
                               filename: file.name,
                               contentType: file.type,
+                              // Pass contentType for admin uploads
+                              ...(contentType &&
+                                contentType !== "assets" && { contentType }),
+                              // Pass adminContentType when uploading to admin folders
+                              ...(contentType === "admin" &&
+                                adminContentType && { adminContentType }),
                             }),
-                          }
+                          },
                         );
 
                         if (!signedUrlResponse.ok) {
                           throw new Error(
-                            `Failed to get signed URL: ${signedUrlResponse.statusText}`
+                            `Failed to get signed URL: ${signedUrlResponse.statusText}`,
                           );
                         }
 
@@ -235,7 +267,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
                             const errorText = await uploadResponse.text();
                             console.error(
                               "R2 Upload Error Response:",
-                              errorText
+                              errorText,
                             );
                             r2Error = `Failed to upload to R2: ${
                               uploadResponse.statusText

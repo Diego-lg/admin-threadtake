@@ -4,14 +4,20 @@ import { UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { R2Config } from "@/lib/r2-config";
 import { UserFolderService } from "@/services/user-folder-service";
-import { UserFolderPaths } from "@/lib/r2-user-storage";
+import { UserFolderPaths, AdminFolderPaths } from "@/lib/r2-user-storage";
 
 /**
  * Query parameters for user file listing
  */
 interface UserFilesQuery {
   prefix?: string;
-  contentType?: "mockups" | "profile-pictures" | "assets" | "exports";
+  contentType?:
+    | "mockups"
+    | "profile-pictures"
+    | "assets"
+    | "exports"
+    | "admin"
+    | "all";
   page?: string;
   pageSize?: string;
   sortBy?: "name" | "date" | "size";
@@ -101,8 +107,10 @@ export async function GET(req: Request) {
       });
     }
 
-    // 5. Ensure user folder exists
-    await UserFolderService.ensureUserFolderExists(effectiveUserId);
+    // 5. Ensure user folder exists (skip for admin/all content types)
+    if (query.contentType !== "admin" && query.contentType !== "all") {
+      await UserFolderService.ensureUserFolderExists(effectiveUserId);
+    }
 
     // 6. Determine the prefix based on content type
     let effectivePrefix = query.prefix;
@@ -120,6 +128,14 @@ export async function GET(req: Request) {
           break;
         case "exports":
           effectivePrefix = UserFolderPaths.getExportsPath(effectiveUserId);
+          break;
+        case "admin":
+          // Browse admin folder (billboards, categories, etc.)
+          effectivePrefix = "admin/";
+          break;
+        case "all":
+          // Browse entire bucket from root
+          effectivePrefix = "";
           break;
         default:
           effectivePrefix = UserFolderPaths.getUserBasePath(effectiveUserId);

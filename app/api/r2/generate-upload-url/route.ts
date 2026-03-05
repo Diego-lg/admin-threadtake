@@ -12,8 +12,11 @@ import {
   ExportType,
   ProfilePictureType,
   MockupType,
+  AdminFolderPaths,
+  AdminContentType,
 } from "@/lib/r2-user-storage";
 import { UserFolderService } from "@/services/user-folder-service";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Content types supported for upload
@@ -23,7 +26,8 @@ type ContentType =
   | "profile-pictures"
   | "assets"
   | "exports"
-  | "designs";
+  | "designs"
+  | "admin";
 
 /**
  * Request body interface for upload URL generation
@@ -36,6 +40,8 @@ interface UploadUrlRequest {
   exportType?: ExportType; // For exports
   profileType?: ProfilePictureType; // For profile pictures
   mockupType?: MockupType; // For mockups
+  adminContentType?: AdminContentType; // For admin content (billboards, categories, etc.)
+  contentId?: string; // Optional specific content ID for admin content
 }
 
 /**
@@ -62,7 +68,7 @@ export async function POST(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -97,7 +103,7 @@ export async function POST(req: Request) {
       });
       return new NextResponse(
         "Missing required fields: contentType and filename",
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -108,16 +114,33 @@ export async function POST(req: Request) {
       "assets",
       "exports",
       "designs",
+      "admin",
     ];
     if (!validContentTypes.includes(contentType)) {
       return new NextResponse(
         `Invalid contentType. Must be one of: ${validContentTypes.join(", ")}`,
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 4. Ensure user folder structure exists
-    await UserFolderService.ensureUserFolderExists(userId);
+    // 4. For admin content, check if user has admin role
+    if (contentType === "admin") {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.role !== "ADMIN") {
+        return new NextResponse("Unauthorized: Admin access required", {
+          status: 403,
+        });
+      }
+      if (!body.adminContentType) {
+        return new NextResponse(
+          "Missing required field for admin content: adminContentType",
+          { status: 400 },
+        );
+      }
+    } else {
+      // Ensure user folder structure exists for non-admin content
+      await UserFolderService.ensureUserFolderExists(userId);
+    }
 
     // 5. Generate appropriate path based on content type
     let pathInfo: { key: string; publicUrl: string };
@@ -127,7 +150,7 @@ export async function POST(req: Request) {
         if (!designId || !mockupType) {
           return new NextResponse(
             "Missing required fields for mockups: designId and mockupType",
-            { status: 400 }
+            { status: 400 },
           );
         }
         const fileExtension = filename.split(".").pop() || "png";
@@ -135,7 +158,7 @@ export async function POST(req: Request) {
           userId,
           designId,
           mockupType,
-          fileExtension
+          fileExtension,
         );
         break;
 
@@ -146,11 +169,11 @@ export async function POST(req: Request) {
         });
         if (!profileType) {
           console.log(
-            "[R2_GENERATE_UPLOAD_URL] Missing profileType for profile pictures"
+            "[R2_GENERATE_UPLOAD_URL] Missing profileType for profile pictures",
           );
           return new NextResponse(
             "Missing required field for profile pictures: profileType",
-            { status: 400 }
+            { status: 400 },
           );
         }
         const profileExtension = filename.split(".").pop() || "jpg";
@@ -162,11 +185,11 @@ export async function POST(req: Request) {
         pathInfo = await UserFolderService.getProfilePicturePath(
           userId,
           profileType,
-          profileExtension
+          profileExtension,
         );
         console.log(
           "[R2_GENERATE_UPLOAD_URL] Profile picture path generated:",
-          pathInfo
+          pathInfo,
         );
         break;
 
@@ -174,7 +197,7 @@ export async function POST(req: Request) {
         if (!assetType) {
           return new NextResponse(
             "Missing required field for assets: assetType",
-            { status: 400 }
+            { status: 400 },
           );
         }
         const assetExtension = filename.split(".").pop() || "";
@@ -182,7 +205,7 @@ export async function POST(req: Request) {
           userId,
           assetType,
           designId,
-          assetExtension
+          assetExtension,
         );
         break;
 
@@ -190,13 +213,13 @@ export async function POST(req: Request) {
         if (!exportType) {
           return new NextResponse(
             "Missing required field for exports: exportType",
-            { status: 400 }
+            { status: 400 },
           );
         }
         pathInfo = await UserFolderService.getExportPath(
           userId,
           exportType,
-          filename
+          filename,
         );
         break;
 
@@ -205,15 +228,36 @@ export async function POST(req: Request) {
         const designExtension = filename.split(".").pop() || "png";
         const uniqueFilename = UserFileNaming.generateUniqueFilename(
           filename,
-          "design"
+          "design",
         );
         const designKey = `${UserFolderPaths.getUserBasePath(
-          userId
+          userId,
         )}/designs/${uniqueFilename}`;
         const config = R2Config.getConfig();
         pathInfo = {
           key: designKey,
           publicUrl: `${config.publicBucketUrl}/${designKey}`,
+        };
+        break;
+
+      case "admin":
+        // Handle admin content (billboards, categories, products, etc.)
+        const adminContentType = body.adminContentType as AdminContentType;
+        const contentId = body.contentId || uuidv4();
+        const adminFileExtension = filename.split(".").pop() || "png";
+        const adminUniqueFilename = `${Date.now()}_${uuidv4()}.${adminFileExtension}`;
+
+        // Use AdminFolderPaths for dynamic admin content paths
+        const adminBasePath = AdminFolderPaths.getContentPath(
+          adminContentType,
+          contentId,
+        );
+        const adminKey = `${adminBasePath}/${adminUniqueFilename}`;
+
+        const adminConfig = R2Config.getConfig();
+        pathInfo = {
+          key: adminKey,
+          publicUrl: `${adminConfig.publicBucketUrl}/${adminKey}`,
         };
         break;
 
@@ -245,7 +289,7 @@ export async function POST(req: Request) {
         key: pathInfo.key,
         filename,
         expiresAt,
-      }
+      },
     );
 
     // 8. Return response

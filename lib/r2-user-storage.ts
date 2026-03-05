@@ -269,6 +269,150 @@ export class UserFolderPaths {
 }
 
 /**
+ * Types of admin/web content that can be stored
+ */
+export type AdminContentType =
+  | "billboards"
+  | "categories"
+  | "products"
+  | "assets"
+  | "promotions"
+  | "settings";
+
+/**
+ * Admin folder structure paths for web/admin content
+ * These are not user-specific, but are for the platform's admin content
+ */
+export class AdminFolderPaths {
+  /**
+   * Get the base admin folder path
+   * @returns Base admin folder path
+   */
+  static getAdminBasePath(): string {
+    return "admin";
+  }
+
+  /**
+   * Get the billboards folder path
+   * @returns Billboards folder path
+   */
+  static getBillboardsPath(): string {
+    return `${this.getAdminBasePath()}/billboards`;
+  }
+
+  /**
+   * Get a specific billboard image path
+   * @param billboardId - The billboard ID
+   * @returns Billboard image path
+   */
+  static getBillboardPath(billboardId: string): string {
+    if (!billboardId || typeof billboardId !== "string") {
+      throw new Error("Invalid billboard ID provided");
+    }
+    return `${this.getBillboardsPath()}/${billboardId}`;
+  }
+
+  /**
+   * Get the categories folder path
+   * @returns Categories folder path
+   */
+  static getCategoriesPath(): string {
+    return `${this.getAdminBasePath()}/categories`;
+  }
+
+  /**
+   * Get a specific category folder path
+   * @param categoryId - The category ID
+   * @returns Category folder path
+   */
+  static getCategoryPath(categoryId: string): string {
+    if (!categoryId || typeof categoryId !== "string") {
+      throw new Error("Invalid category ID provided");
+    }
+    return `${this.getCategoriesPath()}/${categoryId}`;
+  }
+
+  /**
+   * Get the products folder path
+   * @returns Products folder path
+   */
+  static getProductsPath(): string {
+    return `${this.getAdminBasePath()}/products`;
+  }
+
+  /**
+   * Get a specific product folder path
+   * @param productId - The product ID
+   * @returns Product folder path
+   */
+  static getProductPath(productId: string): string {
+    if (!productId || typeof productId !== "string") {
+      throw new Error("Invalid product ID provided");
+    }
+    return `${this.getProductsPath()}/${productId}`;
+  }
+
+  /**
+   * Get the admin assets folder path
+   * @returns Admin assets folder path
+   */
+  static getAssetsPath(): string {
+    return `${this.getAdminBasePath()}/assets`;
+  }
+
+  /**
+   * Get a specific admin asset type path
+   * @param assetType - The asset type
+   * @returns Asset type path
+   */
+  static getAssetTypePath(assetType: string): string {
+    return `${this.getAssetsPath()}/${assetType}`;
+  }
+
+  /**
+   * Get the promotions folder path
+   * @returns Promotions folder path
+   */
+  static getPromotionsPath(): string {
+    return `${this.getAdminBasePath()}/promotions`;
+  }
+
+  /**
+   * Get a specific promotion folder path
+   * @param promotionId - The promotion ID
+   * @returns Promotion folder path
+   */
+  static getPromotionPath(promotionId: string): string {
+    if (!promotionId || typeof promotionId !== "string") {
+      throw new Error("Invalid promotion ID provided");
+    }
+    return `${this.getPromotionsPath()}/${promotionId}`;
+  }
+
+  /**
+   * Get the settings folder path
+   * @returns Settings folder path
+   */
+  static getSettingsPath(): string {
+    return `${this.getAdminBasePath()}/settings`;
+  }
+
+  /**
+   * Get a dynamic admin content path
+   * @param contentType - The type of admin content
+   * @param contentId - Optional specific content ID
+   * @returns Dynamic admin content path
+   */
+  static getContentPath(
+    contentType: AdminContentType,
+    contentId?: string,
+  ): string {
+    const basePath = `${this.getAdminBasePath()}/${contentType}`;
+    return contentId ? `${basePath}/${contentId}` : basePath;
+  }
+}
+
+/**
  * File naming utilities for user storage
  */
 export class UserFileNaming {
@@ -845,8 +989,15 @@ export class R2UserStorage {
   ): Promise<{ key: string; lastModified: Date; size: number }[]> {
     try {
       const client = getR2Client();
-      const userBasePath = UserFolderPaths.getUserBasePath(userId);
-      const fullPrefix = prefix ? `${userBasePath}/${prefix}` : userBasePath;
+      let fullPrefix: string;
+
+      // Check if this is an admin prefix - don't prepend user path for admin content
+      if (prefix && prefix.startsWith("admin/")) {
+        fullPrefix = prefix;
+      } else {
+        const userBasePath = UserFolderPaths.getUserBasePath(userId);
+        fullPrefix = prefix ? `${userBasePath}/${prefix}` : userBasePath;
+      }
 
       const config = getR2Config();
       const command = new ListObjectsV2Command({

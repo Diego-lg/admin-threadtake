@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid"; // For generating unique filenames
+import { AdminFolderPaths } from "@/lib/r2-user-storage";
 
 // --- IMPORTANT: Configure these environment variables ---
 const R2_ENDPOINT = process.env.R2_ENDPOINT; // e.g., https://<ACCOUNT_ID>.r2.cloudflarestorage.com
@@ -47,7 +48,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { filename, contentType } = await req.json();
+    const { filename, contentType, adminContentType, contentId } =
+      await req.json();
 
     if (!filename || !contentType) {
       return new NextResponse("Filename and contentType are required", {
@@ -55,9 +57,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // Generate a unique key for the object in R2
-    const uniqueFilename = `${uuidv4()}-${filename}`;
-    const key = `uploads/${uniqueFilename}`; // Example: store in an 'uploads' folder
+    let key: string;
+
+    // Handle admin content uploads (billboards, categories, products, etc.)
+    if (contentType === "admin" && adminContentType) {
+      const folderPath = AdminFolderPaths.getContentPath(
+        adminContentType,
+        contentId,
+      );
+      const fileExtension = filename.split(".").pop() || "png";
+      const uniqueFilename = `${Date.now()}_${uuidv4()}.${fileExtension}`;
+      key = `${folderPath}/${uniqueFilename}`;
+    } else {
+      // Default: user uploads folder
+      const uniqueFilename = `${uuidv4()}-${filename}`;
+      key = `uploads/${uniqueFilename}`;
+    }
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,

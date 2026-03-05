@@ -12,6 +12,7 @@ import {
   UserFolderService,
   AssetType,
   ExportType,
+  AdminFolderPaths,
 } from "@/lib/r2-user-storage";
 
 /**
@@ -19,7 +20,13 @@ import {
  */
 interface ListFilesQuery {
   prefix?: string;
-  contentType?: "mockups" | "profile-pictures" | "assets" | "exports";
+  contentType?:
+    | "mockups"
+    | "profile-pictures"
+    | "assets"
+    | "exports"
+    | "admin"
+    | "all";
   page?: string;
   pageSize?: string;
   userId?: string; // For admin access to other users' files
@@ -61,7 +68,7 @@ export async function GET(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -91,8 +98,10 @@ export async function GET(req: Request) {
       });
     }
 
-    // 5. Ensure user folder exists
-    await UserFolderService.ensureUserFolderExists(targetUserId);
+    // 5. Ensure user folder exists (skip for admin/all content types)
+    if (query.contentType !== "admin" && query.contentType !== "all") {
+      await UserFolderService.ensureUserFolderExists(targetUserId);
+    }
 
     // 6. Determine the prefix based on content type
     let effectivePrefix = query.prefix;
@@ -111,6 +120,14 @@ export async function GET(req: Request) {
         case "exports":
           effectivePrefix = UserFolderPaths.getExportsPath(targetUserId);
           break;
+        case "admin":
+          // Browse admin folder (billboards, categories, etc.)
+          effectivePrefix = "admin/";
+          break;
+        case "all":
+          // Browse entire bucket from root
+          effectivePrefix = "";
+          break;
         default:
           effectivePrefix = UserFolderPaths.getUserBasePath(targetUserId);
       }
@@ -123,12 +140,33 @@ export async function GET(req: Request) {
       targetUserId,
       effectivePrefix,
       page,
-      pageSize
+      pageSize,
     );
 
     // 8. Format response
     const config = R2Config.getConfig();
-    const files = result.files.map((file: any) => ({
+
+    // Extract folders and filter files to only show those directly in the current prefix
+    const foldersSet = new Set<string>();
+    const filesDirectlyInFolder: any[] = [];
+
+    result.files.forEach((file: any) => {
+      const relativePath = file.key.replace(effectivePrefix, "");
+      const pathParts = relativePath.split("/").filter((p: string) => p); // Remove empty parts
+
+      if (pathParts.length === 1) {
+        // This file is directly in the folder (not in a subfolder)
+        filesDirectlyInFolder.push(file);
+      }
+
+      if (pathParts.length > 1) {
+        // This file is in a subfolder - add the first subfolder to folders list
+        foldersSet.add(pathParts[0]);
+      }
+    });
+
+    // Format the filtered files with URLs
+    const files = filesDirectlyInFolder.map((file: any) => ({
       key: file.key,
       url: `${config.publicBucketUrl}/${file.key}`,
       lastModified: file.lastModified,
@@ -136,20 +174,22 @@ export async function GET(req: Request) {
       contentType: file.key.split(".").pop(), // Simple content type detection
     }));
 
-    // Extract folders from the file listing
-    const foldersSet = new Set<string>();
-    result.files.forEach((file: any) => {
-      const relativePath = file.key.replace(effectivePrefix, "");
-      const pathParts = relativePath.split("/");
-      if (pathParts.length > 1) {
-        foldersSet.add(pathParts[0]);
-      }
-    });
+    // For admin content, also add default admin subfolders if no files exist yet
+    if (effectivePrefix === "admin/" && foldersSet.size === 0) {
+      foldersSet.add("billboards");
+      foldersSet.add("categories");
+      foldersSet.add("products");
+      foldersSet.add("promotions");
+      foldersSet.add("assets");
+      foldersSet.add("settings");
+    }
 
     const folders = Array.from(foldersSet)
       .map((folderName) => ({
         name: folderName,
-        prefix: `${effectivePrefix}/${folderName}/`,
+        prefix: effectivePrefix.endsWith("/")
+          ? `${effectivePrefix}${folderName}/`
+          : `${effectivePrefix}/${folderName}/`,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -197,7 +237,7 @@ export async function POST(req: Request) {
     if (!R2Config.validateConfig()) {
       return new NextResponse(
         "Server configuration error: R2 settings missing",
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -218,69 +258,90 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4. Ensure user folder exists
-    await UserFolderService.ensureUserFolderExists(userId);
-
-    // 5. Generate path based on content type
+    // 4. Handle admin content type differently (no user folder needed)
     let pathInfo: { key: string; publicUrl: string };
     const fileExtension = file.name.split(".").pop() || "";
+    const r2Config = R2Config.getConfig();
 
-    switch (contentType) {
-      case "assets":
-        pathInfo = await UserFolderService.getAssetPath(
-          userId,
-          assetType,
-          undefined,
-          fileExtension
-        );
-        break;
-      case "mockups":
-        // For mockups, we need additional parameters
-        const designId = formData.get("designId") as string;
-        const mockupType = formData.get("mockupType") as any;
-        if (!designId || !mockupType) {
-          return new NextResponse(
-            "Missing required parameters for mockups: designId and mockupType",
-            { status: 400 }
+    // For admin content, we don't need to ensure user folder exists
+    if (contentType === "admin") {
+      // Get the admin content type (billboards, categories, products, etc.)
+      const adminContentType =
+        (formData.get("adminContentType") as any) || "billboards";
+      const contentId = formData.get("contentId") as string;
+
+      // Generate path using AdminFolderPaths
+      const folderPath = AdminFolderPaths.getContentPath(
+        adminContentType,
+        contentId,
+      );
+      const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const key = `${folderPath}/${filename}`;
+
+      pathInfo = {
+        key,
+        publicUrl: `${r2Config.publicBucketUrl}/${key}`,
+      };
+    } else {
+      // Ensure user folder exists for non-admin content
+      await UserFolderService.ensureUserFolderExists(userId);
+
+      switch (contentType) {
+        case "assets":
+          pathInfo = await UserFolderService.getAssetPath(
+            userId,
+            assetType,
+            undefined,
+            fileExtension,
           );
-        }
-        pathInfo = await UserFolderService.getMockupPath(
-          userId,
-          designId,
-          mockupType,
-          fileExtension
-        );
-        break;
-      case "profile-pictures":
-        const profileType = (formData.get("profileType") as any) || "current";
-        pathInfo = await UserFolderService.getProfilePicturePath(
-          userId,
-          profileType,
-          fileExtension
-        );
-        break;
-      case "exports":
-        const exportType =
-          (formData.get("exportType") as ExportType) || "designs";
-        pathInfo = await UserFolderService.getExportPath(
-          userId,
-          exportType,
-          file.name
-        );
-        break;
-      default:
-        // Default to assets/uploads
-        pathInfo = await UserFolderService.getAssetPath(
-          userId,
-          "uploads",
-          undefined,
-          fileExtension
-        );
+          break;
+        case "mockups":
+          // For mockups, we need additional parameters
+          const designId = formData.get("designId") as string;
+          const mockupType = formData.get("mockupType") as any;
+          if (!designId || !mockupType) {
+            return new NextResponse(
+              "Missing required parameters for mockups: designId and mockupType",
+              { status: 400 },
+            );
+          }
+          pathInfo = await UserFolderService.getMockupPath(
+            userId,
+            designId,
+            mockupType,
+            fileExtension,
+          );
+          break;
+        case "profile-pictures":
+          const profileType = (formData.get("profileType") as any) || "current";
+          pathInfo = await UserFolderService.getProfilePicturePath(
+            userId,
+            profileType,
+            fileExtension,
+          );
+          break;
+        case "exports":
+          const exportType =
+            (formData.get("exportType") as ExportType) || "designs";
+          pathInfo = await UserFolderService.getExportPath(
+            userId,
+            exportType,
+            file.name,
+          );
+          break;
+        default:
+          // Default to assets/uploads
+          pathInfo = await UserFolderService.getAssetPath(
+            userId,
+            "uploads",
+            undefined,
+            fileExtension,
+          );
+      }
     }
 
     // 6. Upload to R2
     const client = R2Config.getS3Client();
-    const r2Config = R2Config.getConfig();
 
     const upload = new Upload({
       client,

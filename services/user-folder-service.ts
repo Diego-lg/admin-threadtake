@@ -987,15 +987,20 @@ export class UserFolderService {
     totalPages: number;
   }> {
     try {
-      // Validate user folder exists
-      const folderExists = await this.ensureUserFolderExists(userId);
-      if (!folderExists) {
-        return {
-          files: [],
-          totalCount: 0,
-          currentPage: page,
-          totalPages: 0,
-        };
+      // Skip user folder validation for admin prefixes
+      const isAdminPrefix = prefix && prefix.startsWith("admin/");
+
+      if (!isAdminPrefix) {
+        // Validate user folder exists for user content
+        const folderExists = await this.ensureUserFolderExists(userId);
+        if (!folderExists) {
+          return {
+            files: [],
+            totalCount: 0,
+            currentPage: page,
+            totalPages: 0,
+          };
+        }
       }
 
       // Get files with pagination
